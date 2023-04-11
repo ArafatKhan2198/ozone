@@ -82,6 +82,7 @@ public class TestContainerStateCounts extends AbstractReconSqlDBTest {
     ReconTestInjector reconTestInjector =
         new ReconTestInjector.Builder(temporaryFolder)
             .withReconSqlDb()
+            .withReconOm(reconOMMetadataManager)
             .withOmServiceProvider(mock(OzoneManagerServiceProviderImpl.class))
             // No longer using mock reconSCM as we need nodeDB in Facade
             //  to establish datanode UUID to hostname mapping
@@ -93,8 +94,6 @@ public class TestContainerStateCounts extends AbstractReconSqlDBTest {
             .addBinding(ClusterStateEndpoint.class)
             .addBinding(ContainerHealthSchemaManager.class)
             .build();
-    reconContainerMetadataManager =
-        reconTestInjector.getInstance(ReconContainerMetadataManager.class);
     ozoneStorageContainerManager =
         reconTestInjector.getInstance(OzoneStorageContainerManager.class);
     reconContainerManager = (ReconContainerManager)
@@ -121,8 +120,6 @@ public class TestContainerStateCounts extends AbstractReconSqlDBTest {
         HddsProtos.LifeCycleState.DELETED);
     putContainerInfos(NUM_CLOSED_CONTAINERS,
         HddsProtos.LifeCycleState.CLOSED);
-    // Get the list of all containers from Recon API
-    List<ContainerInfo> scmContainers = reconContainerManager.getContainers();
 
     // Get the cluster state using the ClusterStateEndpoint
     Response response1 = clusterStateEndpoint.getClusterState();
