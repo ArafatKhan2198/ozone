@@ -41,7 +41,7 @@ else
   MAVEN_OPTIONS="${MAVEN_OPTIONS} --fail-at-end"
 fi
 
-if [[ "${CHECK}" == "integration" ]] || [[ ${ITERATIONS} -gt 1 ]]; then
+if [[ "${CHECK}" == "integration" ]]; then
   mvn ${MAVEN_OPTIONS} -DskipTests clean install
 fi
 
@@ -75,6 +75,10 @@ for i in $(seq 1 ${ITERATIONS}); do
     rc=${irc}
   fi
 done
+
+if [[ ${ITERATIONS} -gt 1 ]]; then
+  grep -c "exit code: [^0]" "${REPORT_DIR}/summary.txt" > "${REPORT_DIR}/failures"
+fi
 
 if [[ "${OZONE_WITH_COVERAGE}" == "true" ]]; then
   #Archive combined jacoco records
