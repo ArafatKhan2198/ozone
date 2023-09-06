@@ -375,12 +375,14 @@ public class TestOzoneManagerHAMetadataOnly extends TestOzoneManagerHA {
     String userName = UserGroupInformation.getCurrentUser().getUserName();
     ObjectStore objectStore = getObjectStore();
 
+    // Generate a unique prefix for volume names
     String prefix = "vol-" + RandomStringUtils.randomNumeric(10) + "-";
     VolumeArgs createVolumeArgs = VolumeArgs.newBuilder()
         .setOwner(userName)
         .setAdmin(userName)
         .build();
 
+    // Create and store a set of volumes with unique names
     Set<String> expectedVolumes = new TreeSet<>();
     for (int i = 0; i < 100; i++) {
       String volumeName = prefix + i;
@@ -388,6 +390,7 @@ public class TestOzoneManagerHAMetadataOnly extends TestOzoneManagerHA {
       objectStore.createVolume(volumeName, createVolumeArgs);
     }
 
+    // Validate the list of volumes retrieved from the ObjectStore
     validateVolumesList(expectedVolumes,
         objectStore.listVolumesByUser(userName, prefix, ""));
 
@@ -395,6 +398,7 @@ public class TestOzoneManagerHAMetadataOnly extends TestOzoneManagerHA {
     stopLeaderOM();
     Thread.sleep(NODE_FAILURE_TIMEOUT * 2);
 
+    // Validate the list of volumes again after a node failure
     validateVolumesList(expectedVolumes,
         objectStore.listVolumesByUser(userName, prefix, ""));
   }
