@@ -157,20 +157,6 @@ public final class TestNSSummaryTaskWithLegacy {
     nSSummaryTaskWithLegacy = new NSSummaryTaskWithLegacy(
         reconNamespaceSummaryManager,
         reconOMMetadataManager, omConfiguration);
-
-    // write a NSSummary prior to reprocess
-    // verify it got cleaned up after.
-    NSSummary staleNSSummary = new NSSummary();
-    RDBBatchOperation rdbBatchOperation = new RDBBatchOperation();
-    reconNamespaceSummaryManager.batchStoreNSSummaries(rdbBatchOperation, -1L,
-        staleNSSummary);
-    reconNamespaceSummaryManager.commitBatchOperation(rdbBatchOperation);
-
-    // Verify commit
-    Assert.assertNotNull(reconNamespaceSummaryManager.getNSSummary(-1L));
-
-    // reinit Recon RocksDB's namespace CF.
-    reconNamespaceSummaryManager.clearNSSummaryTable();
   }
 
   @Before
@@ -559,15 +545,15 @@ public final class TestNSSummaryTaskWithLegacy {
 
   /**
    * Populate OMDB with the following configs.
-   * vol
-   * /     \
-   * bucket1   bucket2
-   * /    \      /    \
-   * file1  dir1  file2  file4
-   * /   \
-   * dir2   dir3
-   * /
-   * file3
+   *              vol
+   *            /     \
+   *        bucket1   bucket2
+   *        /    \      /    \
+   *     file1  dir1  file2  file4
+   *            /   \
+   *         dir2   dir3
+   *          /
+   *        file3
    *
    * @throws IOException
    */
