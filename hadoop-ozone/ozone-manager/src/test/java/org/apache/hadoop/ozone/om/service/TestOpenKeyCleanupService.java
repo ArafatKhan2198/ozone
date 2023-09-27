@@ -135,8 +135,10 @@ public class TestOpenKeyCleanupService {
   @Timeout(300)
   public void testCleanupExpiredOpenKeys(
       int numDEFKeys, int numFSOKeys, boolean hsync) throws Exception {
-    LOG.info("numDEFKeys={}, numFSOKeys={}, hsync? {}",
-        numDEFKeys, numFSOKeys, hsync);
+
+    // Log a message that we are starting the method name.
+    LOG.info("Starting testCleanupExpiredOpenKeys with numDEFKeys={}, " +
+            "numFSOKeys={}, hsync={}", numDEFKeys, numFSOKeys, hsync);
 
     OpenKeyCleanupService openKeyCleanupService =
         (OpenKeyCleanupService) keyManager.getOpenKeyCleanupService();
@@ -181,14 +183,35 @@ public class TestOpenKeyCleanupService {
     assertExpiredOpenKeys(true, hsync,
         BucketLayout.FILE_SYSTEM_OPTIMIZED);
     if (hsync) {
+      // Log the values.
+      LOG.info("numDEFKeys={}, numFSOKeys={}, hsync? {}",
+          numDEFKeys, numFSOKeys, hsync);
+      // Log the metrics.
+      LOG.info("getNumOpenKeysCleaned={}, getNumOpenKeysHSyncCleaned={}, " +
+              "getNumKeyHSyncs={}",
+          metrics.getNumOpenKeysCleaned(),
+          metrics.getNumOpenKeysHSyncCleaned(),
+          metrics.getNumKeyHSyncs());
       assertEquals(numDEFKeys, metrics.getNumOpenKeysCleaned());
       assertTrue(metrics.getNumOpenKeysHSyncCleaned() >= numFSOKeys);
       assertEquals(numFSOKeys, metrics.getNumKeyHSyncs());
     } else {
+      // Log the same here.
+      LOG.info("numDEFKeys={}, numFSOKeys={}, hsync? {}",
+          numDEFKeys, numFSOKeys, hsync);
+      // Log the metrics.
+      LOG.info("getNumOpenKeysCleaned={}, getNumOpenKeysHSyncCleaned={}, " +
+              "getNumKeyHSyncs={}",
+          metrics.getNumOpenKeysCleaned(),
+          metrics.getNumOpenKeysHSyncCleaned(),
+          metrics.getNumKeyHSyncs());
       assertEquals(keyCount, metrics.getNumOpenKeysCleaned());
       assertEquals(0, metrics.getNumOpenKeysHSyncCleaned());
       assertEquals(0, metrics.getNumKeyHSyncs());
     }
+
+    LOG.info("testCleanupExpiredOpenKeys with numDEFKeys={}, " +
+            "numFSOKeys={}, hsync={} passed", numDEFKeys, numFSOKeys, hsync);
   }
 
   /**
