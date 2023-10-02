@@ -344,7 +344,7 @@ jobs:
           distribution: 'temurin'
           java-version: 8
       - name: Execute tests
-        run: hadoop-ozone/dev-support/checks/integration.sh -Dtest=TestBlockDeletion
+        run: hadoop-ozone/dev-support/checks/integration.sh -Dtest=TestCloseContainerByPipeline
         env:
           ITERATIONS: 10
       - name: Summary of failures
