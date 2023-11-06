@@ -129,7 +129,6 @@ public class TestParentAcl {
   }
 
   @Test
-  @Category(UnhealthyTest.class) @Unhealthy("HDDS-6335")
   public void testKeyAcl()
       throws IOException {
     OzoneObj keyObj;
