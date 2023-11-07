@@ -80,7 +80,6 @@ public class TestFreonWithDatanodeFastRestart {
   }
 
   @Test
-  @Category(UnhealthyTest.class) @Unhealthy("HDDS-1160")
   public void testRestart() throws Exception {
     startFreon();
     StateMachine sm = getStateMachine();
