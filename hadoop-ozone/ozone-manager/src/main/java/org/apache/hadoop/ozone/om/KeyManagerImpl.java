@@ -1144,6 +1144,7 @@ public class KeyManagerImpl implements KeyManager {
   @Override
   public OzoneFileStatus getFileStatus(OmKeyArgs args) throws IOException {
     Preconditions.checkNotNull(args, "Key args can not be null");
+    LOG.info("getFileStatus for key:{}", args.getKeyName());
     return getFileStatus(args, null);
   }
 
@@ -1165,7 +1166,8 @@ public class KeyManagerImpl implements KeyManager {
     Preconditions.checkNotNull(args, "Key args can not be null");
     String volumeName = args.getVolumeName();
     String bucketName = args.getBucketName();
-
+    LOG.info("getFileStatus for key:{}/{}/{}", volumeName, bucketName,
+        args.getKeyName());
     if (isBucketFSOptimized(volumeName, bucketName)) {
       return getOzoneFileStatusFSO(args, clientAddress, false);
     }
@@ -1174,12 +1176,13 @@ public class KeyManagerImpl implements KeyManager {
 
   private OzoneFileStatus getOzoneFileStatus(OmKeyArgs args,
       String clientAddress) throws IOException {
-
+    LOG.info("Inside getOzoneFileStatus for key:{}", args.getKeyName());
     Preconditions.checkNotNull(args, "Key args can not be null");
     final String volumeName = args.getVolumeName();
     final String bucketName = args.getBucketName();
     final String keyName = args.getKeyName();
-
+    LOG.info("getFileStatus for key:{}/{}/{}", volumeName, bucketName,
+        keyName);
     OmKeyInfo fileKeyInfo = null;
     OmKeyInfo dirKeyInfo = null;
     OmKeyInfo fakeDirKeyInfo = null;
@@ -1189,17 +1192,21 @@ public class KeyManagerImpl implements KeyManager {
       // Check if this is the root of the filesystem.
       if (keyName.length() == 0) {
         OMFileRequest.validateBucket(metadataManager, volumeName, bucketName);
+        LOG.info("This is the root of the file");
         return new OzoneFileStatus();
       }
 
       // Check if the key is a file.
       String fileKeyBytes = metadataManager.getOzoneKey(
               volumeName, bucketName, keyName);
+      LOG.info("fileKeyBytes:{}", fileKeyBytes);
       BucketLayout layout =
           getBucketLayout(metadataManager, volumeName, bucketName);
+      LOG.info("layout:{}", layout);
       fileKeyInfo = metadataManager.getKeyTable(layout).get(fileKeyBytes);
+      LOG.info("fileKeyInfo:{}", fileKeyInfo);
       String dirKey = OzoneFSUtils.addTrailingSlashIfNeeded(keyName);
-
+      LOG.info("dirKey:{}", dirKey);
       // Check if the key is a directory.
       if (fileKeyInfo == null) {
         String dirKeyBytes = metadataManager.getOzoneKey(
@@ -1234,20 +1241,23 @@ public class KeyManagerImpl implements KeyManager {
     }
 
     if (fileKeyInfo != null) {
+      LOG.info("Its a file");
       return new OzoneFileStatus(fileKeyInfo, scmBlockSize, false);
     }
 
     if (dirKeyInfo != null) {
+      LOG.info("Its a directory");
       return new OzoneFileStatus(dirKeyInfo, scmBlockSize, true);
     }
 
     if (fakeDirKeyInfo != null) {
+      LOG.info("Its a fake directory");
       return new OzoneFileStatus(fakeDirKeyInfo, scmBlockSize, true);
     }
 
     // Key is not found, throws exception
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Unable to get file status for the key: volume: {}, bucket:" +
+      LOG.info("Unable to get file status for the key: volume: {}, bucket:" +
                       " {}, key: {}, with error: No such file exists.",
               volumeName, bucketName, keyName);
     }
