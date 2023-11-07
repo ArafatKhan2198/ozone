@@ -936,6 +936,10 @@ public class KeyManagerImpl implements KeyManager {
   @Override
   public boolean checkAccess(OzoneObj ozObject, RequestContext context)
       throws OMException {
+    // Log the input parameters
+    LOG.info("ozObject: {}", ozObject);
+    LOG.info("context: {}", context);
+
     Objects.requireNonNull(ozObject);
     Objects.requireNonNull(context);
     Objects.requireNonNull(context.getClientUgi());
@@ -947,6 +951,10 @@ public class KeyManagerImpl implements KeyManager {
     } catch (IOException e) {
       throw new OMException("Failed to resolveBucketLink:", e, INTERNAL_ERROR);
     }
+
+    // Log the resolvedBucket
+    LOG.info("resolvedBucket: {}", resolvedBucket);
+
     String volume = resolvedBucket.realVolume();
     String bucket = resolvedBucket.realBucket();
     String keyName = ozObject.getKeyName();
@@ -957,6 +965,13 @@ public class KeyManagerImpl implements KeyManager {
         .setKeyName(keyName)
         .setHeadOp(true)
         .build();
+
+    // Log the contents of volume, bucket, keyName, objectKey, and args
+    LOG.info("volume: {}", volume);
+    LOG.info("bucket: {}", bucket);
+    LOG.info("keyName: {}", keyName);
+    LOG.info("objectKey: {}", objectKey);
+    LOG.info("args: {}", args);
 
     BucketLayout bucketLayout = BucketLayout.DEFAULT;
     String buckKey =
@@ -970,19 +985,25 @@ public class KeyManagerImpl implements KeyManager {
       LOG.error("Failed to get bucket for the key: " + buckKey, e);
     }
 
+    // Log the contents of bucketLayout, buckKey, and buckInfo
+    LOG.info("bucketLayout: {}", bucketLayout);
+    LOG.info("buckKey: {}", buckKey);
+    LOG.info("buckInfo: {}", buckInfo);
+
     metadataManager.getLock().acquireReadLock(BUCKET_LOCK, volume, bucket);
     try {
       OMFileRequest.validateBucket(metadataManager, volume, bucket);
       OmKeyInfo keyInfo;
 
-      // For Acl Type "WRITE", the key can only be found in
+      // For Acl Type "WRITE," the key can only be found in
       // OpenKeyTable since appends to existing keys are not supported.
       if (context.getAclRights() == IAccessAuthorizer.ACLType.WRITE) {
         keyInfo =
             metadataManager.getOpenKeyTable(bucketLayout).get(objectKey);
+        LOG.info("keyInfo: {}", keyInfo);
       } else {
-        // Recursive check is done only for ACL_TYPE DELETE
-        // Rename and delete operations will send ACL_TYPE DELETE
+        // Recursive check is done only for ACL_TYPE DELETE.
+        // Rename and delete operations will send ACL_TYPE DELETE.
         if (context.isRecursiveAccessCheck()
             && context.getAclRights() == IAccessAuthorizer.ACLType.DELETE) {
           return checkChildrenAcls(ozObject, context);
@@ -990,9 +1011,11 @@ public class KeyManagerImpl implements KeyManager {
         try {
           OzoneFileStatus fileStatus = getFileStatus(args);
           keyInfo = fileStatus.getKeyInfo();
+          LOG.info("fileStatus: {}", fileStatus);
+          LOG.info("keyInfo: {}", keyInfo);
         } catch (IOException e) {
-          // OzoneFS will check whether the key exists when write a new key.
-          // For Acl Type "READ", when the key is not exist return true.
+          // OzoneFS will check whether the key exists when writing a new key.
+          // For Acl Type "READ," when the key does not exist, return true.
           // To Avoid KEY_NOT_FOUND Exception.
           if (context.getAclRights() == IAccessAuthorizer.ACLType.READ) {
             return true;
@@ -1004,20 +1027,24 @@ public class KeyManagerImpl implements KeyManager {
         }
       }
 
+      // Log the contents of keyInfo
+      LOG.info("keyInfo: {}", keyInfo);
+
       if (keyInfo == null) {
-        // the key does not exist, but it is a parent "dir" of some key
-        // let access be determined based on volume/bucket/prefix ACL
-        LOG.debug("key:{} is non-existent parent, permit access to user:{}",
+        // The key does not exist, but it is a parent "dir" of some key.
+        // Let access be determined based on volume/bucket/prefix ACL.
+        LOG.debug("key:{} is a non-existent parent, permit access to user:{}",
             keyName, context.getClientUgi());
         return true;
       }
 
       boolean hasAccess = OzoneAclUtil.checkAclRights(
           keyInfo.getAcls(), context);
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("user:{} has access rights for key:{} :{} ",
-            context.getClientUgi(), ozObject.getKeyName(), hasAccess);
-      }
+
+      // Log access rights information
+      LOG.info("User:{} has access rights for key:{}: {} ",
+          context.getClientUgi(), ozObject.getKeyName(), hasAccess);
+
       return hasAccess;
     } catch (IOException ex) {
       if (ex instanceof OMException) {

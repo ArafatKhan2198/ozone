@@ -76,11 +76,11 @@ public class OzoneNativeAuthorizer implements IAccessAuthorizer {
   }
 
   /**
-   * Check access for given ozoneObject.
+   * Check access for the given ozoneObject.
    *
    * @param ozObject object for which access needs to be checked.
    * @param context Context object encapsulating all user related information.
-   * @return true if user has access else false.
+   * @return true if the user has access else false.
    */
   @Override
   public boolean checkAccess(IOzoneObj ozObject, RequestContext context)
@@ -95,16 +95,20 @@ public class OzoneNativeAuthorizer implements IAccessAuthorizer {
     if (ozObject instanceof OzoneObjInfo) {
       objInfo = (OzoneObjInfo) ozObject;
     } else {
-      throw new OMException("Unexpected input received. OM native acls are " +
+      throw new OMException("Unexpected input received. OM native ACLs are " +
           "configured to work with OzoneObjInfo type only.", INVALID_REQUEST);
     }
+
+    // Log the initialization of objInfo and isACLTypeCreate
+    LOG.info("Initialized objInfo: {}", objInfo);
+    LOG.info("Initialized isACLTypeCreate: {}", isACLTypeCreate);
 
     // bypass all checks for admin
     if (adminCheck.test(context.getClientUgi())) {
       return true;
     }
 
-    // bypass read checks for read only admin users
+    // bypass read checks for read-only admin users
     if (readOnlyAdminCheck.test(context.getClientUgi())
         && (context.getAclRights() == ACLType.READ
         || context.getAclRights() == ACLType.READ_ACL
@@ -127,13 +131,19 @@ public class OzoneNativeAuthorizer implements IAccessAuthorizer {
         .setIp(context.getIp())
         .setAclType(context.getAclType())
         .setAclRights(parentAclRight).build();
-    
-    // Volume will be always read in case of key and prefix
+
+    // Log the initialization of parentContext
+    LOG.info("Initialized parentContext: {}", parentContext);
+
+    // Volume will always be read in case of key and prefix
     parentVolContext = RequestContext.newBuilder()
         .setClientUgi(context.getClientUgi())
         .setIp(context.getIp())
         .setAclType(context.getAclType())
         .setAclRights(ACLType.READ).build();
+
+    // Log the initialization of parentVolContext
+    LOG.info("Initialized parentVolContext: {}", parentVolContext);
 
     switch (objInfo.getResourceType()) {
     case VOLUME:
@@ -150,7 +160,7 @@ public class OzoneNativeAuthorizer implements IAccessAuthorizer {
         return true;
       }
       // Skip bucket access check for CREATE acl since
-      // bucket will not exist at the time of creation
+      // the bucket will not exist at the time of creation
       boolean bucketAccess = isACLTypeCreate
           || bucketManager.checkAccess(objInfo, context);
       return (bucketAccess
@@ -162,7 +172,7 @@ public class OzoneNativeAuthorizer implements IAccessAuthorizer {
         return true;
       }
       // Skip key access check for CREATE acl since
-      // key will not exist at the time of creation
+      // the key will not exist at the time of creation
       boolean keyAccess = isACLTypeCreate
           || keyManager.checkAccess(objInfo, context);
       return (keyAccess
@@ -176,7 +186,7 @@ public class OzoneNativeAuthorizer implements IAccessAuthorizer {
         return true;
       }
       // Skip prefix access check for CREATE acl since
-      // prefix will not exist at the time of creation
+      // the prefix will not exist at the time of creation
       boolean prefixAccess = isACLTypeCreate
           || prefixManager.checkAccess(objInfo, context);
       return (prefixAccess

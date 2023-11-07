@@ -53,6 +53,8 @@ import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -94,6 +96,8 @@ public class TestParentAcl {
   private static UserGroupInformation testUgi, testUgi1;
   private static OzoneManagerProtocol writeClient;
   private static File testDir;
+  private static final Logger LOG =
+      LoggerFactory.getLogger(TestParentAcl.class);
 
   @BeforeClass
   public static void setup() throws IOException, AuthenticationException {
@@ -228,16 +232,21 @@ public class TestParentAcl {
   private void testParentChild(OzoneObj child,
       ACLType parentAclType, ACLType childAclType) throws IOException {
 
+    // Log the creation of requestContext
     RequestContext requestContext = new RequestContext.Builder()
         .setClientUgi(testUgi1)
         .setAclType(USER)
         .setAclRights(childAclType).build();
+    LOG.info("Created requestContext: {}", requestContext);
 
+    // Log the creation of childAcl and parentAcl
     OzoneAcl childAcl = new OzoneAcl(USER,
         testUgi1.getUserName(), childAclType, ACCESS);
+    LOG.info("Created childAcl: {}", childAcl);
 
     OzoneAcl parentAcl = new OzoneAcl(USER,
         testUgi1.getUserName(), parentAclType, ACCESS);
+    LOG.info("Created parentAcl: {}", parentAcl);
 
     Assert.assertFalse(nativeAuthorizer.checkAccess(child, requestContext));
     if (child.getResourceType() == BUCKET) {
@@ -269,8 +278,15 @@ public class TestParentAcl {
 
   private void addVolumeAcl(String vol, OzoneAcl ozoneAcl) throws IOException {
     String volumeKey = metadataManager.getVolumeKey(vol);
+
+    // Log the volumeKey
+    LOG.info("volumeKey: {}", volumeKey);
+
     OmVolumeArgs omVolumeArgs =
         metadataManager.getVolumeTable().get(volumeKey);
+
+    // Log the contents of omVolumeArgs
+    LOG.info("omVolumeArgs: {}", omVolumeArgs);
 
     omVolumeArgs.addAcl(ozoneAcl);
 
@@ -298,18 +314,30 @@ public class TestParentAcl {
   }
 
   private void addKeyAcl(String vol, String buck, String key,
-      OzoneAcl ozoneAcl) throws IOException {
+                         OzoneAcl ozoneAcl) throws IOException {
+    // Log input parameters
+    LOG.info("Adding ACL to key: vol={}, buck={}, key={}, acl={}",
+        vol, buck, key, ozoneAcl);
+
     String objKey = metadataManager.getOzoneKey(vol, buck, key);
+    // Log the calculated objKey
+    LOG.info("Calculated objKey: {}", objKey);
+
     OmKeyInfo omKeyInfo =
         metadataManager.getKeyTable(getBucketLayout()).get(objKey);
 
+    // Log the retrieved OmKeyInfo
+    LOG.info("Retrieved OmKeyInfo: {}", omKeyInfo);
+
     omKeyInfo.addAcl(ozoneAcl);
+
+    // Log OmKeyInfo after adding ACL
+    LOG.info("OmKeyInfo after adding ACL: {}", omKeyInfo);
 
     metadataManager.getKeyTable(getBucketLayout())
         .addCacheEntry(new CacheKey<>(objKey),
             CacheValue.get(1L, omKeyInfo));
   }
-
   private void setKeyAcl(String vol, String buck, String key,
                          List<OzoneAcl> ozoneAcls) throws IOException {
     String objKey = metadataManager.getOzoneKey(vol, buck, key);
@@ -324,14 +352,27 @@ public class TestParentAcl {
 
   private void addBucketAcl(String vol, String buck, OzoneAcl ozoneAcl)
       throws IOException {
+    // Log input parameters
+    LOG.info("Adding ACL to bucket: vol={}, buck={}, acl={}", vol, buck, ozoneAcl);
+
     String bucketKey = metadataManager.getBucketKey(vol, buck);
+    // Log the calculated bucketKey
+    LOG.info("Calculated bucketKey: {}", bucketKey);
+
     OmBucketInfo omBucketInfo = metadataManager.getBucketTable().get(bucketKey);
 
+    // Log the retrieved OmBucketInfo
+    LOG.info("Retrieved OmBucketInfo: {}", omBucketInfo);
+
     omBucketInfo.addAcl(ozoneAcl);
+
+    // Log OmBucketInfo after adding ACL
+    LOG.info("OmBucketInfo after adding ACL: {}", omBucketInfo);
 
     metadataManager.getBucketTable().addCacheEntry(new CacheKey<>(bucketKey),
         CacheValue.get(1L, omBucketInfo));
   }
+
 
   private List<OzoneAcl> getBucketAcls(String vol, String buck)
       throws IOException {
