@@ -1256,11 +1256,10 @@ public class KeyManagerImpl implements KeyManager {
     }
 
     // Key is not found, throws exception
-    if (LOG.isDebugEnabled()) {
-      LOG.info("Unable to get file status for the key: volume: {}, bucket:" +
-                      " {}, key: {}, with error: No such file exists.",
-              volumeName, bucketName, keyName);
-    }
+    LOG.info("Unable to get file status for the key: volume: {}, bucket:" +
+            " {}, key: {}, with error: No such file exists.",
+        volumeName, bucketName, keyName);
+
     throw new OMException("Unable to get file status: volume: " +
             volumeName + " bucket: " + bucketName + " key: " + keyName,
             FILE_NOT_FOUND);
