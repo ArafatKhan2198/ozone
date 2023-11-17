@@ -1259,11 +1259,21 @@ public class TestOzoneFileSystem {
     Path rootPath = new Path(fs.getUri().toString() + root);
     fs.mkdirs(rootPath);
 
-    Path file1Source = new Path(fs.getUri().toString() + root
-            + "/file1_Copy");
+    // Log the value of rootPath
+    System.out.println("rootPath: " + rootPath.toString());
+
+    Path file1Source = new Path(fs.getUri().toString() + root + "/file1_Copy");
     ContractTestUtils.touch(fs, file1Source);
+
+    // Log the value of file1Source
+    System.out.println("file1Source: " + file1Source.toString());
+
     Path file1Destin = new Path(fs.getUri().toString() + root + "/file1");
     assertTrue("Renamed failed", fs.rename(file1Source, file1Destin));
+
+    // Log the value of file1Destin
+    System.out.println("file1Destin: " + file1Destin.toString());
+
     assertTrue("Renamed failed: /root/file1", fs.exists(file1Destin));
 
     /**
@@ -1273,6 +1283,10 @@ public class TestOzoneFileSystem {
      */
     for (int i = 0; i < 10; i++) {
       FileStatus[] fStatus = fs.listStatus(rootPath);
+      String statuses =  Arrays.toString(fStatus);
+      // Log the value of fStatus
+      System.out.println("fStatus: " + statuses);
+
       assertEquals("Renamed failed", 1, fStatus.length);
       assertEquals("Wrong path name!", file1Destin, fStatus[0].getPath());
     }
