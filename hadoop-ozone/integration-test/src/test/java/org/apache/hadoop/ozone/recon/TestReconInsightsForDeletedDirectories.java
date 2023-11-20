@@ -226,6 +226,8 @@ public class TestReconInsightsForDeletedDirectories {
     impl.syncDataFromOM();
     // Check the count of recon directory table and recon deletedDirectory table
     assertTableRowCount(reconDirTable, 0, true);
+    // Add a sleep to wait for the deleted directory to be added to the table.
+    Thread.sleep(1000);
     assertTableRowCount(reconDeletedDirTable, 1, true);
 
     // Create an Instance of OMDBInsightEndpoint.
