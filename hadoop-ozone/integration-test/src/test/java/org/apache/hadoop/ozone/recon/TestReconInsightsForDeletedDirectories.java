@@ -178,6 +178,8 @@ public class TestReconInsightsForDeletedDirectories {
     // Sync data from Ozone Manager to Recon.
     OzoneManagerServiceProviderImpl impl = (OzoneManagerServiceProviderImpl)
         cluster.getReconServer().getOzoneManagerServiceProvider();
+    // Add a sleep to wait for the deleted directory to be added to the table.
+    Thread.sleep(1000);
     impl.syncDataFromOM();
 
     // Retrieve tables from Recon's OM-DB.
@@ -222,12 +224,12 @@ public class TestReconInsightsForDeletedDirectories {
 
     // Delete the entire directory dir1.
     fs.delete(dir1, true);
-
+    // Add a sleep to wait for the deleted directory to be added to the table.
+    Thread.sleep(1000);
     impl.syncDataFromOM();
     // Check the count of recon directory table and recon deletedDirectory table
     assertTableRowCount(reconDirTable, 0, true);
-    // Add a sleep to wait for the deleted directory to be added to the table.
-    Thread.sleep(1000);
+
     assertTableRowCount(reconDeletedDirTable, 1, true);
 
     // Create an Instance of OMDBInsightEndpoint.
@@ -294,6 +296,8 @@ public class TestReconInsightsForDeletedDirectories {
     // Sync data from Ozone Manager to Recon.
     OzoneManagerServiceProviderImpl impl = (OzoneManagerServiceProviderImpl)
         cluster.getReconServer().getOzoneManagerServiceProvider();
+    // Add a sleep to wait for the deleted directory to be added to the table.
+    Thread.sleep(1000);
     impl.syncDataFromOM();
 
     // Retrieve tables from Recon's OM-DB.
@@ -325,12 +329,12 @@ public class TestReconInsightsForDeletedDirectories {
 
     // Delete the entire root directory dir1.
     fs.delete(new Path("/dir1/dir2/dir3"), true);
+    // Add a sleep to wait for the deleted directory to be added to the table.
+    Thread.sleep(1000);
     impl.syncDataFromOM();
     // Verify the entries in the Recon tables after sync.
     assertTableRowCount(reconFileTable, 3, true);
     assertTableRowCount(reconDirTable, 2, true);
-    // Add a sleep to wait for the deleted directory to be added to the table.
-    Thread.sleep(1000);
     assertTableRowCount(reconDeletedDirTable, 1, true);
 
     // Fetch the deleted directory info from Recon OmDbInsightEndpoint.
@@ -384,6 +388,8 @@ public class TestReconInsightsForDeletedDirectories {
     // Sync data from Ozone Manager to Recon.
     OzoneManagerServiceProviderImpl impl = (OzoneManagerServiceProviderImpl)
         cluster.getReconServer().getOzoneManagerServiceProvider();
+    // Add a sleep to wait for the deleted directory to be added to the table.
+    Thread.sleep(1000);
     impl.syncDataFromOM();
     // Fetch the deleted directory info from Recon OmDbInsightEndpoint.
     OzoneStorageContainerManager reconSCM =
