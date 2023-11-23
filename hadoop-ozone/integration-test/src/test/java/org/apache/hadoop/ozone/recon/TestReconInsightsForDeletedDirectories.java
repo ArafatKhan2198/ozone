@@ -469,7 +469,7 @@ public class TestReconInsightsForDeletedDirectories {
 
   private boolean assertTableRowCount(int expectedCount,
                                       Table<String, ?> table, boolean isRecon) {
-    syncDataFromOM();
+//    syncDataFromOM();
     long count = 0L;
     try {
       if (isRecon) {
