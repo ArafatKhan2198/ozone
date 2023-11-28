@@ -115,6 +115,11 @@ public interface S3SecretManager {
   }
 
   default void clearCache(List<Long> flushedTransactionIds) {
+    LOG.info("Clearing cache for {} transactions.", flushedTransactionIds.size());
+    // Iterate the flushedTransactionIds and log its values.
+    for (Long flushedTransactionId : flushedTransactionIds) {
+      LOG.info("Flushed transaction id: {}", flushedTransactionId);
+    }
     S3SecretCache cache = cache();
     if (cache != null) {
       cache.clearCache(flushedTransactionIds);

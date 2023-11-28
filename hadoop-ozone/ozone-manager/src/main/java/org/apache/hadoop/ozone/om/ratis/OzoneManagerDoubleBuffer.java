@@ -307,6 +307,8 @@ public final class OzoneManagerDoubleBuffer {
    */
   @VisibleForTesting
   void flushCurrentBuffer() {
+    LOG.info("Flushing current buffer. Current buffer size: {}",
+        currentBuffer.size());
     try {
       swapCurrentAndReadyBuffer();
 
@@ -356,6 +358,12 @@ public final class OzoneManagerDoubleBuffer {
 
       buffer.iterator().forEachRemaining(
           entry -> addCleanupEntry(entry, cleanupEpochs));
+
+      // Iterate the cleanupEpochs and log print the entries.
+      for (Map.Entry<String, List<Long>> entry : cleanupEpochs.entrySet()) {
+        LOG.info("Cleanup entries for Table {} are these txn logIndex {}", entry.getKey(),
+            entry.getValue());
+      }
 
       // Commit transaction info to DB.
       flushedEpochs = buffer.stream()

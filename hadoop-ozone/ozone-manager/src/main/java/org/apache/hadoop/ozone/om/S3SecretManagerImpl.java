@@ -110,6 +110,7 @@ public class S3SecretManagerImpl implements S3SecretManager {
 
   @Override
   public void clearS3Cache(List<Long> flushedTransactionIds) {
+    LOG.info("Inside clearS3Cache of S3SecretManagerImpl.");
     clearCache(flushedTransactionIds);
   }
 
