@@ -70,6 +70,7 @@ import org.apache.hadoop.ozone.container.common.volume.StorageVolume;
 import org.apache.hadoop.ozone.container.common.volume.VolumeSet;
 import org.apache.hadoop.ozone.container.ozoneimpl.ContainerController;
 import org.apache.hadoop.hdds.security.token.OzoneBlockTokenSecretManager;
+import org.apache.hadoop.ozone.recon.tasks.NSSummaryTask;
 import org.apache.hadoop.security.token.Token;
 import org.apache.ozone.test.GenericTestUtils;
 
@@ -112,11 +113,16 @@ import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Test Container servers when security is enabled.
  */
 public class TestSecureContainerServer {
+
+  private static final Logger LOG =
+      LoggerFactory.getLogger(TestSecureContainerServer.class);
   private static final String TEST_DIR
       = GenericTestUtils.getTestDir("dfs").getAbsolutePath() + File.separator;
   private static final OzoneConfiguration CONF = new OzoneConfiguration();
@@ -243,6 +249,13 @@ public class TestSecureContainerServer {
         MockPipeline.createPipeline(numDatanodes);
 
     initConf.accept(pipeline, CONF);
+
+    // print out the details of all the data nodes in each pipeline.
+    LOG.info("###################");
+    for (DatanodeDetails dn : pipeline.getNodes()) {
+      LOG.info("Pipeline: {} DN Port: {}", pipeline.getId(), dn.getPorts());
+    }
+    LOG.info("###################");
 
     for (DatanodeDetails dn : pipeline.getNodes()) {
       final XceiverServerSpi s = createServer.apply(dn, CONF);
