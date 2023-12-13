@@ -102,6 +102,7 @@ import static org.apache.ratis.rpc.SupportedRpcType.GRPC;
 import org.apache.ratis.util.ExitUtils;
 import org.apache.ratis.util.function.CheckedBiConsumer;
 import org.apache.ratis.util.function.CheckedBiFunction;
+import org.jooq.Log;
 import org.junit.After;
 
 import static org.junit.Assert.assertEquals;
@@ -226,6 +227,8 @@ public class TestSecureContainerServer {
 
   private static void runTestClientServerRatis(RpcType rpc, int numNodes)
       throws Exception {
+    LOG.info("$$$$$$$$$$$$$");
+    LOG.info("Number of nodes: {}", numNodes);
     runTestClientServer(numNodes,
         (pipeline, conf) -> RatisTestHelper.initRatisConf(rpc, conf),
         XceiverClientRatis::newXceiverClientRatis,
@@ -245,9 +248,11 @@ public class TestSecureContainerServer {
       Consumer<Pipeline> stopServer)
       throws Exception {
     final List<XceiverServerSpi> servers = new ArrayList<>();
+    // A pipeline is created with the specified number of data nodes (numDatanodes).
     final Pipeline pipeline =
         MockPipeline.createPipeline(numDatanodes);
 
+    // Configuration is initialized for the test pipeline.
     initConf.accept(pipeline, CONF);
 
     // print out the details of all the data nodes in each pipeline.
@@ -257,10 +262,15 @@ public class TestSecureContainerServer {
     }
     LOG.info("###################");
 
+    // For each data node in the pipeline, a server (XceiverServerSpi -
+    // A server endpoint that acts as the communication layer for Ozone containers)
+    // is created, started, and added to a list of servers for later management.
     for (DatanodeDetails dn : pipeline.getNodes()) {
       final XceiverServerSpi s = createServer.apply(dn, CONF);
       servers.add(s);
-      s.start();
+      // This is where its failing.
+      startServerWithRetry(s, 5,
+          1000); // maxRetries = 5, retryDelayMillis = 1000 ms
       initServer.accept(dn, pipeline);
     }
 
@@ -353,4 +363,37 @@ public class TestSecureContainerServer {
         containerTokenSecretManager.createIdentifier(username, containerID)
     ).encodeToUrlString();
   }
+
+  private static void startServerWithRetry(XceiverServerSpi server,
+                                           int maxRetries,
+                                           long retryDelayMillis)
+      throws IOException {
+    boolean serverStarted = false;
+    for (int retry = 0; retry < maxRetries && !serverStarted; retry++) {
+      try {
+        server.start();
+        serverStarted = true;
+      } catch (IOException e) {
+        if (e.getMessage().contains("Failed to bind")) {
+          LOG.warn("Failed to start server on attempt " + (retry + 1) +
+              ", retrying after delay", e);
+          try {
+            Thread.sleep(retryDelayMillis);
+          } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new IOException(
+                "Interrupted while waiting to retry server start", ie);
+          }
+        } else {
+          throw e;
+        }
+      }
+    }
+
+    if (!serverStarted) {
+      throw new IOException(
+          "Failed to start server after " + maxRetries + " attempts");
+    }
+  }
+
 }
