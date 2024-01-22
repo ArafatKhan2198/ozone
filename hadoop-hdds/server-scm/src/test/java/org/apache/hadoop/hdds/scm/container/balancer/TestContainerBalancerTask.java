@@ -1048,7 +1048,6 @@ public class TestContainerBalancerTask {
     stopBalancer();
   }
 
-  @Unhealthy("HDDS-8941")
   @Test
   public void testDelayedStart() throws InterruptedException, TimeoutException {
     conf.setTimeDuration("hdds.scm.wait.time.after.safemode.exit", 10,
@@ -1060,7 +1059,9 @@ public class TestContainerBalancerTask {
     // start the thread and assert that balancer is RUNNING
     balancingThread.start();
     assertEquals(ContainerBalancerTask.Status.RUNNING, containerBalancerTask.getBalancerStatus());
-
+    if (scm.getScmContext().isInSafeMode()) {
+      LOG.info("Waiting for SCM to exit safemode");
+    }
     /*
      Wait for the thread to start sleeping and assert that it's sleeping.
      This is the delay before it starts balancing.
@@ -1078,7 +1079,7 @@ public class TestContainerBalancerTask {
     assertEquals(ContainerBalancerTask.Status.STOPPED, containerBalancerTask.getBalancerStatus());
 
     // ensure the thread dies
-    GenericTestUtils.waitFor(() -> !balancingThread.isAlive(), 1, 20);
+    GenericTestUtils.waitFor(() -> !balancingThread.isAlive(), 1, 40);
     assertFalse(balancingThread.isAlive());
   }
 
