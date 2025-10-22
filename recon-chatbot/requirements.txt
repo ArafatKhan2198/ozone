@@ -1,0 +1,20 @@
+# Ozone Recon Chatbot Dependencies
+
+# Google AI Generative AI library for Gemini
+google-generativeai>=0.3.0
+
+# HTTP requests library
+requests>=2.31.0
+
+# YAML parsing (usually included with Python, but explicit for clarity)
+PyYAML>=6.0
+
+# Optional: For better JSON handling and formatting
+# (These are typically included with Python standard library)
+# json
+# urllib.parse
+# os
+# sys
+# argparse
+# typing
+

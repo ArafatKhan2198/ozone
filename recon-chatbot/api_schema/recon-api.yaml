@@ -1779,10 +1779,6 @@ components:
         committed:
           type: number
           example: 27007111
-        nonOzoneUsed:
-          type: number
-          description: "Storage space on the datanodes used by files not managed by Ozone. This can answer questions about 'non-ozone used space'."
-          example: 150000000
     ClusterState:
       type: object
       properties:

@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  recon-chatbot:
+    build: .
+    container_name: recon-chatbot
+    env_file:
+      - .env
+    environment:
+      - RECON_URL=http://host.docker.internal:9888
+    network_mode: host
+    stdin_open: true
+    tty: true
+    volumes:
+      - .:/app
+    command: python main.py
