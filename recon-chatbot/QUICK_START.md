@@ -92,3 +92,12 @@ RECON_URL=http://your-host:9888 docker-compose up
 3. Explore different types of queries
 4. Consider integrating with your existing Ozone workflow
 
+
+
+
+
+
+
+
+
+

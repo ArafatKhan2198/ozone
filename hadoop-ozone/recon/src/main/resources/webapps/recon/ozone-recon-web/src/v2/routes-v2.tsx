@@ -27,6 +27,7 @@ const Containers = lazy(() => import('@/v2/pages/containers/containers'));
 const Insights = lazy(() => import('@/v2/pages/insights/insights'));
 const OMDBInsights = lazy(() => import('@/v2/pages/insights/omInsights'));
 const Heatmap = lazy(() => import('@/v2/pages/heatmap/heatmap'));
+const AIAssistant = lazy(() => import('@/v2/pages/aiAssistant/AIAssistant'));
 
 
 export const routesV2 = [
@@ -69,5 +70,9 @@ export const routesV2 = [
   {
     path: '/Heatmap',
     component: Heatmap
+  },
+  {
+    path: '/AI-Assistant',
+    component: AIAssistant
   }
 ];

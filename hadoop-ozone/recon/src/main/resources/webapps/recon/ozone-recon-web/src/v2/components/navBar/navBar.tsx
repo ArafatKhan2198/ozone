@@ -28,7 +28,9 @@ import {
   FolderOpenOutlined,
   InboxOutlined,
   LayoutOutlined,
-  PieChartOutlined
+  PieChartOutlined,
+  QuestionCircleOutlined,
+  RobotOutlined
 } from '@ant-design/icons';
 import {Link, useLocation} from 'react-router-dom';
 
@@ -91,6 +93,12 @@ const NavBar: React.FC<NavBarProps> = ({
       icon={<DeploymentUnitOutlined />}>
       <span>Pipelines</span>
       <Link to='/Pipelines' />
+    </Menu.Item>
+  ), (
+    <Menu.Item key='/AI-Assistant'
+      icon={<RobotOutlined />}>
+      <span>AI Assistant</span>
+      <Link to='/AI-Assistant' />
     </Menu.Item>
   ), (
     <Menu.Item key='/Containers'

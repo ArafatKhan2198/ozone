@@ -46,3 +46,12 @@ echo "=============================="
 # Build and run the chatbot
 docker-compose up --build
 
+
+
+
+
+
+
+
+
+

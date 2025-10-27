@@ -21,3 +21,12 @@ ENV PYTHONUNBUFFERED=1
 # Default command
 CMD ["python", "main.py"]
 
+
+
+
+
+
+
+
+
+
