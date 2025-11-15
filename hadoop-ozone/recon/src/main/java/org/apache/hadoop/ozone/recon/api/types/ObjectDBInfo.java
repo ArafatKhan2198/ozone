@@ -59,13 +59,15 @@ public class ObjectDBInfo {
     this.setName(omDirectoryInfo.getName());
     this.setCreationTime(omDirectoryInfo.getCreationTime());
     this.setModificationTime(omDirectoryInfo.getModificationTime());
-    this.setAcls(AclMetadata.fromOzoneAcls(omDirectoryInfo.getAcls()));
+    // Commented out to reduce response size for chatbot integration
+    // this.setAcls(AclMetadata.fromOzoneAcls(omDirectoryInfo.getAcls()));
     this.setMetadata(omDirectoryInfo.getMetadata());
   }
 
   public ObjectDBInfo(OmPrefixInfo omPrefixInfo) {
     this.setName(omPrefixInfo.getName());
-    this.setAcls(AclMetadata.fromOzoneAcls(omPrefixInfo.getAcls()));
+    // Commented out to reduce response size for chatbot integration
+    // this.setAcls(AclMetadata.fromOzoneAcls(omPrefixInfo.getAcls()));
     this.setMetadata(omPrefixInfo.getMetadata());
   }
 

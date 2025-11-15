@@ -10,3 +10,6 @@ PyYAML>=6.0
 # Flask for creating the API server
 Flask>=2.0.0
 Flask-Cors>=3.0.0
+
+# Markdown to HTML conversion for UI formatting
+markdown>=3.4.0

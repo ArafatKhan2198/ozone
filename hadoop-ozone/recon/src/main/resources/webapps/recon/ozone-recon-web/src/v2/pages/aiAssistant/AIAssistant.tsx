@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Input, Button, Card, Row, Col, Typography, Space, Avatar, Tag } from 'antd';
-import { SendOutlined, RobotOutlined, UserOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { Input, Button, Card, Row, Col, Typography, Space, Avatar, Tag, message as antdMessage, Tooltip } from 'antd';
+import { SendOutlined, RobotOutlined, UserOutlined, ThunderboltOutlined, CopyOutlined, DeleteOutlined } from '@ant-design/icons';
 import './AIAssistant.less';
 
 const { Title, Paragraph } = Typography;
@@ -20,12 +20,43 @@ const SUGGESTED_QUESTIONS = [
   "Show me the pipeline status"
 ];
 
+const CHAT_STORAGE_KEY = 'ozone-recon-chat-history';
+
 const AIAssistant: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatWindowRef = useRef<HTMLDivElement>(null);
+
+  // Load chat history from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedMessages = localStorage.getItem(CHAT_STORAGE_KEY);
+      if (savedMessages) {
+        const parsed = JSON.parse(savedMessages);
+        // Convert timestamp strings back to Date objects
+        const messagesWithDates = parsed.map((msg: any) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp)
+        }));
+        setMessages(messagesWithDates);
+      }
+    } catch (error) {
+      console.error('Failed to load chat history:', error);
+    }
+  }, []);
+
+  // Save chat history to localStorage whenever messages change
+  useEffect(() => {
+    if (messages.length > 0) {
+      try {
+        localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
+      } catch (error) {
+        console.error('Failed to save chat history:', error);
+      }
+    }
+  }, [messages]);
 
   const scrollToBottom = () => {
     if (chatWindowRef.current) {
@@ -109,17 +140,70 @@ const AIAssistant: React.FC = () => {
     sendMessage(suggestion);
   };
 
+  const handleClearChat = () => {
+    setMessages([]);
+    localStorage.removeItem(CHAT_STORAGE_KEY);
+    antdMessage.success('Chat history cleared');
+  };
+
+  const handleCopyMessage = (text: string) => {
+    // Strip HTML tags for clean copy
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = text;
+    const plainText = tempDiv.textContent || tempDiv.innerText || '';
+    
+    navigator.clipboard.writeText(plainText).then(() => {
+      antdMessage.success('Copied to clipboard');
+    }).catch(() => {
+      antdMessage.error('Failed to copy');
+    });
+  };
+
+  const formatTimestamp = (date: Date) => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  };
+
   return (
     <div className="ai-assistant-container">
       <div className="ai-assistant-header">
-        <Space>
-          <Avatar icon={<RobotOutlined />} size="large" className="assistant-avatar" />
-          <div>
-            <Title level={3} style={{ margin: 0 }}>AI Assistant</Title>
-            <Paragraph type="secondary" style={{ margin: 0, fontSize: '12px' }}>
-              Ask questions about your Ozone cluster
-            </Paragraph>
-          </div>
+        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+          <Space>
+            <Avatar 
+              src="/ai-assistant-logo.png" 
+              size="large" 
+              className="assistant-avatar"
+              style={{ background: 'transparent' }}
+            />
+            <div>
+              <Title level={3} style={{ margin: 0 }}>AI Assistant</Title>
+              <Paragraph type="secondary" style={{ margin: 0, fontSize: '12px' }}>
+                Ask questions about your Ozone cluster
+              </Paragraph>
+            </div>
+          </Space>
+          {messages.length > 0 && (
+            <Tooltip title="Clear conversation">
+              <Button 
+                icon={<DeleteOutlined />} 
+                onClick={handleClearChat}
+                size="small"
+                danger
+                type="text"
+              >
+                Clear Chat
+              </Button>
+            </Tooltip>
+          )}
         </Space>
       </div>
 
@@ -127,7 +211,12 @@ const AIAssistant: React.FC = () => {
         <div className="chat-window" ref={chatWindowRef}>
           {messages.length === 0 && (
             <div className="empty-state">
-              <RobotOutlined className="empty-icon" />
+              <img 
+                src="/ai-assistant-logo.png" 
+                alt="AI Assistant" 
+                className="empty-icon" 
+                style={{ width: '120px', height: '120px', objectFit: 'contain' }}
+              />
               <Title level={4}>Welcome to Ozone AI Assistant</Title>
               <Paragraph type="secondary" style={{ marginBottom: '24px' }}>
                 I can help you understand your cluster's health, datanodes, containers, and more.
@@ -158,13 +247,33 @@ const AIAssistant: React.FC = () => {
               <div className="message-content">
                 {message.sender === 'bot' && (
                   <Avatar 
-                    icon={<RobotOutlined />} 
+                    src="/ai-assistant-logo.png"
                     className="message-avatar bot-avatar"
                     size="small"
+                    style={{ background: 'white' }}
                   />
                 )}
                 <div className={`message-bubble ${message.sender}`}>
-                  <div className="message-text">{parseMarkdown(message.text)}</div>
+                  <div 
+                    className="message-text" 
+                    dangerouslySetInnerHTML={{ __html: message.text }}
+                  />
+                  <div className="message-footer">
+                    <span className="message-timestamp">
+                      {formatTimestamp(message.timestamp)}
+                    </span>
+                    {message.sender === 'bot' && (
+                      <Tooltip title="Copy response">
+                        <Button 
+                          type="text" 
+                          size="small" 
+                          icon={<CopyOutlined />}
+                          onClick={() => handleCopyMessage(message.text)}
+                          className="copy-button"
+                        />
+                      </Tooltip>
+                    )}
+                  </div>
                 </div>
                 {message.sender === 'user' && (
                   <Avatar 
@@ -181,9 +290,10 @@ const AIAssistant: React.FC = () => {
             <div className="message-wrapper bot">
               <div className="message-content">
                 <Avatar 
-                  icon={<RobotOutlined />} 
+                  src="/ai-assistant-logo.png"
                   className="message-avatar bot-avatar"
                   size="small"
+                  style={{ background: 'white' }}
                 />
                 <div className="typing-indicator">
                   <span></span>

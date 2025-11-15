@@ -45,7 +45,8 @@ public class VolumeObjectDBInfo extends ObjectDBInfo {
     super.setUsedNamespace(omVolumeArgs.getUsedNamespace());
     super.setCreationTime(omVolumeArgs.getCreationTime());
     super.setModificationTime(omVolumeArgs.getModificationTime());
-    super.setAcls(AclMetadata.fromOzoneAcls(omVolumeArgs.getAcls()));
+    // Commented out to reduce response size for chatbot integration
+    // super.setAcls(AclMetadata.fromOzoneAcls(omVolumeArgs.getAcls()));
     this.setAdmin(omVolumeArgs.getAdminName());
     this.setOwner(omVolumeArgs.getOwnerName());
     this.setVolume(omVolumeArgs.getVolume());

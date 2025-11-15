@@ -8,6 +8,7 @@ as a REST API. The UI can call this API to get responses for user queries.
 from flask import Flask, request, jsonify
 from chatbot_agent import ReconChatbotAgent
 from flask_cors import CORS
+import markdown
 import os
 import sys
 
@@ -56,8 +57,21 @@ def chat():
     try:
         print(f"💬 Received query: {user_query}")
         response = agent.process_query(user_query)
+        
+        # Convert Markdown to HTML for proper UI rendering
+        # Use 'extra' extension for better markdown support including lists
+        # Note: Removed 'nl2br' as it interferes with proper list rendering
+        html_response = markdown.markdown(
+            response, 
+            extensions=['extra', 'fenced_code', 'sane_lists']
+        )
+        
         print(f"🤖 Sending response: {response}")
-        return jsonify({"response": response})
+        return jsonify({
+            "response": html_response,
+            "raw_response": response,
+            "format": "html"
+        })
     except Exception as e:
         print(f"❌ Error processing query: {e}")
         return jsonify({"error": str(e)}), 500

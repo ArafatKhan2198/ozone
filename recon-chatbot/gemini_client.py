@@ -14,7 +14,7 @@ import google.generativeai as genai
 
 
 class GeminiClient:
-    def __init__(self, api_key: str, model_name: str = "models/gemini-2.5-flash"):
+    def __init__(self, api_key: str, model_name: str = "models/gemini-2.5-pro"):
         """
         Initialize the Gemini client.
         
@@ -129,6 +129,16 @@ Guidelines:
 - If the data shows problems (unhealthy containers, missing data, etc.), highlight them
 - Keep responses concise but informative
 - If the API response is empty or doesn't contain relevant data, say so clearly
+
+IMPORTANT: Format your response using proper Markdown syntax:
+- Use **bold** for emphasis (e.g., **5 datanodes**)
+- For bullet lists, ALWAYS add a blank line before the list starts
+- Use hyphens (-) for bullet points, not asterisks (*)
+- Example:
+  Here are the datanodes:
+  
+  - datanode1: HEALTHY
+  - datanode2: HEALTHY
 
 Format your response as a direct answer to the user's question."""
 

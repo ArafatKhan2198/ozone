@@ -73,7 +73,8 @@ public class BucketObjectDBInfo extends ObjectDBInfo {
     super.setUsedNamespace(omBucketInfo.getUsedNamespace());
     super.setCreationTime(omBucketInfo.getCreationTime());
     super.setModificationTime(omBucketInfo.getModificationTime());
-    super.setAcls(AclMetadata.fromOzoneAcls(omBucketInfo.getAcls()));
+    // Commented out to reduce response size for chatbot integration
+    // super.setAcls(AclMetadata.fromOzoneAcls(omBucketInfo.getAcls()));
     this.volumeName = omBucketInfo.getVolumeName();
     this.sourceBucket = omBucketInfo.getSourceBucket();
     this.sourceVolume = omBucketInfo.getSourceVolume();

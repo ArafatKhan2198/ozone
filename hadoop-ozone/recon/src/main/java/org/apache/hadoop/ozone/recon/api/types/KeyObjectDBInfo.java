@@ -64,7 +64,8 @@ public class KeyObjectDBInfo extends ObjectDBInfo {
     super.setName(omKeyInfo.getKeyName());
     super.setCreationTime(omKeyInfo.getCreationTime());
     super.setModificationTime(omKeyInfo.getModificationTime());
-    super.setAcls(AclMetadata.fromOzoneAcls(omKeyInfo.getAcls()));
+    // Commented out to reduce response size for chatbot integration
+    // super.setAcls(AclMetadata.fromOzoneAcls(omKeyInfo.getAcls()));
     super.setMetadata(omKeyInfo.getMetadata());
     this.setVolumeName(omKeyInfo.getVolumeName());
     this.setBucketName(omKeyInfo.getBucketName());

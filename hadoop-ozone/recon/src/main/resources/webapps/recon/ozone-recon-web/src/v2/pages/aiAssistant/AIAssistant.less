@@ -80,9 +80,8 @@
       padding: 48px 24px;
 
       .empty-icon {
-        font-size: 72px;
-        color: #667eea;
         margin-bottom: 24px;
+        filter: drop-shadow(0 4px 12px rgba(102, 126, 234, 0.2));
         animation: float 3s ease-in-out infinite;
       }
 
@@ -190,12 +189,107 @@
         .message-text {
           font-size: 14px;
           line-height: 1.6;
-          white-space: pre-wrap;
+          margin-bottom: 8px;
           
+          // HTML paragraph styling
+          p {
+            margin: 0 0 12px 0;
+            
+            &:last-child {
+              margin-bottom: 0;
+            }
+          }
+          
+          // Bold text styling
           strong {
             font-weight: 600;
             color: inherit;
           }
+          
+          // List styling
+          ul, ol {
+            margin: 8px 0 12px 0;
+            padding-left: 24px;
+            
+            li {
+              margin: 4px 0;
+              line-height: 1.5;
+            }
+          }
+          
+          // Heading styling
+          h1, h2, h3, h4, h5, h6 {
+            margin: 16px 0 8px 0;
+            font-weight: 600;
+            
+            &:first-child {
+              margin-top: 0;
+            }
+          }
+          
+          h1 { font-size: 20px; }
+          h2 { font-size: 18px; }
+          h3 { font-size: 16px; }
+          h4 { font-size: 15px; }
+          
+          // Code blocks
+          code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 13px;
+          }
+          
+          pre {
+            background: #f5f5f5;
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            
+            code {
+              background: none;
+              padding: 0;
+            }
+          }
+        }
+
+        .message-footer {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-top: 8px;
+          padding-top: 8px;
+          border-top: 1px solid rgba(0, 0, 0, 0.05);
+          
+          .message-timestamp {
+            font-size: 11px;
+            color: #999;
+            font-weight: 500;
+          }
+          
+          .copy-button {
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            color: #667eea;
+            
+            &:hover {
+              color: #764ba2;
+            }
+          }
+        }
+        
+        // Different timestamp color for user messages (green background)
+        &.user .message-footer {
+          border-top: 1px solid rgba(255, 255, 255, 0.15);
+          
+          .message-timestamp {
+            color: rgba(255, 255, 255, 0.8);
+          }
+        }
+        
+        &:hover .copy-button {
+          opacity: 1;
         }
       }
     }
