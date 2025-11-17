@@ -11,7 +11,9 @@ This is the central orchestrator that manages the multi-step conversation flow:
 
 import os
 import yaml
-from typing import Dict, Any, Optional
+import concurrent.futures
+import time
+from typing import Dict, Any, Optional, List
 from gemini_client import GeminiClient
 from api_client import ReconApiClient
 
@@ -97,6 +99,7 @@ class ReconChatbotAgent:
     def process_query(self, user_query: str) -> str:
         """
         Process a user query through the complete chatbot pipeline.
+        Supports both single and multi-endpoint queries.
         
         Args:
             user_query: The user's natural language question
@@ -108,7 +111,7 @@ class ReconChatbotAgent:
             return "Error: API schema not loaded. Please check the configuration."
         
         try:
-            # Step 1: Get tool call from Gemini
+            # Step 1: Get tool call(s) from Gemini
             print(f"🤔 Analyzing query: {user_query}")
             tool_call = self.gemini_client.get_tool_call(user_query, self.api_schema, self.api_guide)
             
@@ -125,29 +128,139 @@ class ReconChatbotAgent:
                 print("✅ Response generated from documentation")
                 return tool_call.get('answer', 'Documentation information not available.')
             
-            print(f"🔧 Selected endpoint: {tool_call.get('endpoint', 'unknown')}")
-            if tool_call.get('reasoning'):
-                print(f"💭 Reasoning: {tool_call['reasoning']}")
+            # Check if multiple API calls are needed
+            if tool_call.get('requires_multiple_calls') and 'tool_calls' in tool_call:
+                print(f"🔧 Multiple endpoints detected: {len(tool_call['tool_calls'])} API calls needed")
+                return self._process_multi_endpoint_query(user_query, tool_call['tool_calls'])
             
-            # Step 2: Execute the API call
-            print("📡 Calling Recon API...")
-            api_response = self.api_client.execute_tool_call(tool_call)
-            
-            # Step 3: Get summarization from Gemini
-            print("✨ Generating summary...")
-            summary = self.gemini_client.summarize_response(
-                user_query, 
-                api_response, 
-                tool_call.get('endpoint', 'unknown')
-            )
-            
-            print("✅ Response generated successfully")
-            return summary
+            # Single endpoint query (existing logic)
+            return self._process_single_endpoint_query(user_query, tool_call)
             
         except Exception as e:
             error_msg = f"I encountered an error while processing your request: {str(e)}"
             print(f"❌ Error: {error_msg}")
             return error_msg
+    
+    def _process_single_endpoint_query(self, user_query: str, tool_call: Dict[str, Any]) -> str:
+        """
+        Process a query that requires only a single API call.
+        
+        Args:
+            user_query: The user's question
+            tool_call: Single endpoint tool call dictionary
+            
+        Returns:
+            Natural language summary of the response
+        """
+        print(f"🔧 Selected endpoint: {tool_call.get('endpoint', 'unknown')}")
+        if tool_call.get('reasoning'):
+            print(f"💭 Reasoning: {tool_call['reasoning']}")
+        
+        # Execute the API call
+        print("📡 Calling Recon API...")
+        api_response = self.api_client.execute_tool_call(tool_call)
+        
+        # Get summarization from Gemini
+        print("✨ Generating summary...")
+        summary = self.gemini_client.summarize_response(
+            user_query, 
+            api_response, 
+            tool_call.get('endpoint', 'unknown')
+        )
+        
+        print("✅ Response generated successfully")
+        return summary
+    
+    def _process_multi_endpoint_query(self, user_query: str, tool_calls: List[Dict[str, Any]]) -> str:
+        """
+        Process a query that requires multiple API calls.
+        Executes calls in parallel for better performance.
+        
+        Args:
+            user_query: The user's question
+            tool_calls: List of tool call dictionaries
+            
+        Returns:
+            Unified natural language summary combining all responses
+        """
+        combined_responses = {}
+        total_calls = len(tool_calls)
+        
+        print(f"📊 Executing {total_calls} API calls in parallel...")
+        
+        # Log which endpoints are being called together (analytics)
+        endpoints_list = [tc.get('endpoint', 'unknown') for tc in tool_calls]
+        print(f"📋 Endpoints: {', '.join(endpoints_list)}")
+        
+        start_time = time.time()
+        
+        # Execute API calls in parallel using ThreadPoolExecutor
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, total_calls)) as executor:
+            # Submit all API calls
+            future_to_tool_call = {
+                executor.submit(self._safe_api_call, tc): tc 
+                for tc in tool_calls
+            }
+            
+            # Collect results as they complete
+            completed = 0
+            for future in concurrent.futures.as_completed(future_to_tool_call):
+                tool_call = future_to_tool_call[future]
+                endpoint = tool_call.get('endpoint', 'unknown')
+                completed += 1
+                
+                try:
+                    api_response = future.result()
+                    combined_responses[endpoint] = {
+                        'response': api_response,
+                        'reasoning': tool_call.get('reasoning', ''),
+                        'error': None
+                    }
+                    print(f"  ✅ [{completed}/{total_calls}] {endpoint} - Success")
+                    
+                except Exception as e:
+                    combined_responses[endpoint] = {
+                        'response': None,
+                        'reasoning': tool_call.get('reasoning', ''),
+                        'error': str(e)
+                    }
+                    print(f"  ❌ [{completed}/{total_calls}] {endpoint} - Failed: {str(e)[:50]}")
+        
+        elapsed_time = time.time() - start_time
+        successful = sum(1 for r in combined_responses.values() if r.get('error') is None)
+        failed = total_calls - successful
+        
+        print(f"⚡ Completed {total_calls} API calls in {elapsed_time:.2f}s ({successful} successful, {failed} failed)")
+        
+        # If all calls failed, return error
+        if successful == 0:
+            return "I encountered errors calling all required API endpoints. Please check if the Recon service is accessible."
+        
+        # Generate unified summary from Gemini
+        print("✨ Generating unified summary...")
+        summary = self.gemini_client.summarize_multi_response(user_query, combined_responses)
+        
+        print("✅ Multi-endpoint response generated successfully")
+        return summary
+    
+    def _safe_api_call(self, tool_call: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Safely execute an API call with error handling.
+        
+        Args:
+            tool_call: Tool call dictionary with endpoint info
+            
+        Returns:
+            API response dictionary
+            
+        Raises:
+            Exception: If the API call fails
+        """
+        try:
+            return self.api_client.execute_tool_call(tool_call)
+        except Exception as e:
+            # Re-raise with context
+            raise Exception(f"API call failed: {str(e)}")
     
     def get_capabilities(self) -> str:
         """

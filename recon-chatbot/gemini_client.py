@@ -45,12 +45,14 @@ class GeminiClient:
 
 Your task is to analyze user queries and determine the appropriate response:
 
-1. **For DATA queries** (asking for current cluster information): Identify the most appropriate API endpoint to call
+1. **For DATA queries** (asking for current cluster information): Identify the most appropriate API endpoint(s) to call
 2. **For DOCUMENTATION queries** (asking about API use cases, purposes, or capabilities): Respond with "DOCUMENTATION_QUERY" and provide the information directly
 
 You have access to the complete Recon API specification and a detailed guide explaining the purpose and use cases of each API.
 
-For DATA queries, return this JSON format:
+IMPORTANT: If the user's question requires data from MULTIPLE API endpoints to give a complete answer, return ALL needed endpoints in an array.
+
+For SINGLE endpoint DATA queries, return this JSON format:
 {
     "endpoint": "/api/v1/endpoint/path",
     "method": "GET",
@@ -59,6 +61,31 @@ For DATA queries, return this JSON format:
     },
     "reasoning": "Brief explanation of why this endpoint was chosen"
 }
+
+For MULTIPLE endpoint DATA queries, return this JSON format:
+{
+    "tool_calls": [
+        {
+            "endpoint": "/api/v1/endpoint1",
+            "method": "GET",
+            "parameters": {},
+            "reasoning": "Explain what data this provides"
+        },
+        {
+            "endpoint": "/api/v1/endpoint2",
+            "method": "GET",
+            "parameters": {},
+            "reasoning": "Explain what data this provides"
+        }
+    ],
+    "requires_multiple_calls": true
+}
+
+Examples requiring MULTIPLE endpoints:
+- "How many total keys and how many are open?" → /clusterState + /keys/open/summary
+- "Show datanodes and pipeline status" → /datanodes + /pipelines
+- "List unhealthy and missing containers" → /containers/unhealthy + /containers/missing
+- "Cluster state and open keys summary" → /clusterState + /keys/open/summary
 
 For DOCUMENTATION queries, return this JSON format:
 {
@@ -156,6 +183,63 @@ Please provide a clear summary that answers the user's question."""
             return response.text.strip()
         except Exception as e:
             return f"I encountered an error while analyzing the data: {e}"
+    
+    def summarize_multi_response(self, user_query: str, combined_responses: Dict[str, Any]) -> str:
+        """
+        Summarize responses from multiple API calls into a unified answer.
+        
+        Args:
+            user_query: The original user question
+            combined_responses: Dictionary mapping endpoint → {response, reasoning, error}
+            
+        Returns:
+            Unified natural language summary combining all API responses
+        """
+        system_prompt = """You are an expert on Apache Ozone Recon data analysis.
+
+Your task is to analyze data from MULTIPLE API endpoints and provide a unified, complete answer.
+
+Guidelines:
+- Combine information from all endpoints to give a comprehensive response
+- Clearly present numbers and facts from each data source
+- If any endpoint failed, mention what data is missing but still answer what you can
+- Keep the response cohesive, well-structured, and easy to read
+- Highlight the most important information first
+- Use clear, non-technical language when possible
+
+IMPORTANT: Format your response using proper Markdown syntax:
+- Use **bold** for emphasis (e.g., **5 datanodes**)
+- For bullet lists, ALWAYS add a blank line before the list starts
+- Use hyphens (-) for bullet points, not asterisks (*)
+- Structure your response logically with clear sections if needed
+
+Format your response as a direct, complete answer to the user's question."""
+
+        # Format the multi-response data for Gemini
+        responses_text = ""
+        successful_calls = 0
+        failed_calls = 0
+        
+        for endpoint, data in combined_responses.items():
+            if data.get('error'):
+                failed_calls += 1
+                responses_text += f"\n\nEndpoint: {endpoint}\nStatus: ❌ FAILED\nError: {data['error']}\nReasoning: {data.get('reasoning', 'N/A')}"
+            else:
+                successful_calls += 1
+                responses_text += f"\n\nEndpoint: {endpoint}\nStatus: ✅ SUCCESS\nReasoning: {data.get('reasoning', 'N/A')}\nResponse Data:\n{json.dumps(data['response'], indent=2)}"
+        
+        user_prompt = f"""User asked: "{user_query}"
+
+Multiple API endpoints were called ({successful_calls} successful, {failed_calls} failed):
+{responses_text}
+
+Please provide a unified, clear summary that completely answers the user's question using data from all successful endpoint calls. If some calls failed, mention what information is unavailable."""
+
+        try:
+            response = self.model.generate_content(system_prompt + "\n\n" + user_prompt)
+            return response.text.strip()
+        except Exception as e:
+            return f"I encountered an error while combining the data: {e}"
     
     def handle_fallback(self, user_query: str) -> str:
         """
