@@ -2,13 +2,13 @@
 title: "Quota in Ozone"
 date: "2020-10-22"
 weight: 4
-summary: Quota in Ozone
+summary: Introduction to Ozone Quota
 icon: user
 menu:
-   main:
-      parent: Features
-summary: Introduction to Ozone Quota
+  main:
+    parent: Features
 ---
+
 <!---
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
