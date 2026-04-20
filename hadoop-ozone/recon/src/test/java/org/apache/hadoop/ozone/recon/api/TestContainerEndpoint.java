@@ -36,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -57,6 +58,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.StreamingOutput;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.hdds.client.BlockID;
 import org.apache.hadoop.hdds.client.RatisReplicationConfig;
@@ -1954,4 +1956,125 @@ public class TestContainerEndpoint {
       }
     }
   }
+
+  @Test
+  public void testExportUnhealthyContainersValidState() throws IOException, TimeoutException {
+    // Setup: Create unhealthy container records
+    putContainerInfos(15);
+    uuid1 = newDatanode("host1", "127.0.0.1");
+    uuid2 = newDatanode("host2", "127.0.0.2");
+    uuid3 = newDatanode("host3", "127.0.0.3");
+    uuid4 = newDatanode("host4", "127.0.0.4");
+    createUnhealthyRecords(5, 4, 3, 2, 1);
+
+    // Test: Call the export endpoint with valid state
+    Response response = containerEndpoint.exportUnhealthyContainers(
+        "MISSING", 100, 0);
+
+    // Verify: Response is 200 OK
+    assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+
+    // Verify: Content-Type is text/csv
+    assertEquals("text/csv", response.getHeaderString("Content-Type"));
+
+    // Verify: Content-Disposition header is present
+    String contentDisposition = response.getHeaderString("Content-Disposition");
+    assertNotNull(contentDisposition);
+    assertTrue(contentDisposition.contains("attachment"));
+    assertTrue(contentDisposition.contains("unhealthy_containers_missing"));
+
+    // Verify: CSV has correct header and data
+    StreamingOutput streamingOutput = (StreamingOutput) response.getEntity();
+    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+    streamingOutput.write(outputStream);
+    String csvOutput = outputStream.toString("UTF-8");
+    String[] lines = csvOutput.split("\n");
+
+    // First line should be the header
+    assertTrue(lines[0].contains("container_id"));
+    assertTrue(lines[0].contains("container_state"));
+    assertTrue(lines[0].contains("in_state_since"));
+
+    // Should have 5 MISSING containers (plus header = 6 lines)
+    assertEquals(6, lines.length);
+
+    // All data rows should contain MISSING state
+    for (int i = 1; i < lines.length; i++) {
+      assertTrue(lines[i].contains("MISSING"));
+    }
+  }
+
+  @Test
+  public void testExportUnhealthyContainersInvalidState() {
+    // Test: Call export endpoint with invalid state
+    WebApplicationException exception = assertThrows(
+        WebApplicationException.class,
+        () -> containerEndpoint.exportUnhealthyContainers(
+            "INVALID_STATE", 100, 0)
+    );
+
+    // Verify: Returns 400 Bad Request
+    assertEquals(Response.Status.BAD_REQUEST.getStatusCode(),
+        exception.getResponse().getStatus());
+  }
+
+  @Test
+  public void testExportUnhealthyContainersLimitParameter()
+      throws IOException, TimeoutException {
+    // Setup: Create test data
+    putContainerInfos(200);
+    uuid1 = newDatanode("host1", "127.0.0.1");
+    uuid2 = newDatanode("host2", "127.0.0.2");
+    uuid3 = newDatanode("host3", "127.0.0.3");
+    uuid4 = newDatanode("host4", "127.0.0.4");
+
+    // Create 150 MISSING containers
+    for (int i = 0; i < 150; i++) {
+      createUnhealthyRecord(i + 1,
+          UnHealthyContainerStates.MISSING.toString(),
+          3, 0, 3, null, false);
+    }
+
+    // Test: Request 50 records
+    Response response = containerEndpoint.exportUnhealthyContainers(
+        "MISSING", 50, 0);
+
+    assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+
+    StreamingOutput streamingOutput = (StreamingOutput) response.getEntity();
+    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+    streamingOutput.write(outputStream);
+    String csvOutput = outputStream.toString("UTF-8");
+    String[] lines = csvOutput.split("\n");
+
+    // Should return exactly what was requested + header
+    assertEquals(51, lines.length);
+
+    // Test: Request 100 records
+    response = containerEndpoint.exportUnhealthyContainers(
+        "MISSING", 100, 0);
+
+    streamingOutput = (StreamingOutput) response.getEntity();
+    outputStream = new ByteArrayOutputStream();
+    streamingOutput.write(outputStream);
+    csvOutput = outputStream.toString("UTF-8");
+    lines = csvOutput.split("\n");
+
+    // Should return exactly 100 + header
+    assertEquals(101, lines.length);
+
+    // Test: Request 0 (all records)
+    response = containerEndpoint.exportUnhealthyContainers(
+        "MISSING", 0, 0);
+
+    streamingOutput = (StreamingOutput) response.getEntity();
+    outputStream = new ByteArrayOutputStream();
+    streamingOutput.write(outputStream);
+    csvOutput = outputStream.toString("UTF-8");
+    lines = csvOutput.split("\n");
+
+    // Should return all 150 records + header
+    assertEquals(151, lines.length);
+  }
+
 }

@@ -30,7 +30,6 @@ import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -526,6 +525,7 @@ public class ContainerEndpoint {
         System.currentTimeMillis());
 
     return Response.ok(stream)
+        .header("Content-Type", "text/csv")
         .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
         .build();
   }
