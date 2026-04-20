@@ -196,11 +196,79 @@ const Containers: React.FC<{}> = () => {
     '5': 'Mismatched Replicas'
   };
 
-  const handleExportCsv = useCallback(() => {
+  const handleExportCsv = useCallback(async () => {
     const state = tabToExportState[selectedTab];
-    const exportUrl = `/api/v1/containers/unhealthy/export?state=${state}&limit=${exportLimit}`;
-    window.open(exportUrl, '_blank');
-    message.success(`Exporting ${tabToLabel[selectedTab]} containers as CSV (Limit: ${exportLimit})`);
+    const label = tabToLabel[selectedTab];
+
+    if (exportLimit > 0 && exportLimit <= 500000) {
+      const exportUrl = `/api/v1/containers/unhealthy/export?state=${state}&limit=${exportLimit}`;
+      window.open(exportUrl, '_blank');
+      message.success(`Exporting ${label} containers as CSV (Limit: ${exportLimit})`);
+      return;
+    }
+
+    const chunkSize = 500000;
+    let prevKey = 0;
+    let part = 1;
+    let totalExported = 0;
+    const hideMessage = message.loading(`Starting export of ${label} containers in chunks...`, 0);
+
+    try {
+      while (true) {
+        const currentLimit = exportLimit === 0 ? chunkSize : Math.min(chunkSize, exportLimit - totalExported);
+        if (currentLimit <= 0) break;
+
+        const exportUrl = `/api/v1/containers/unhealthy/export?state=${state}&limit=${currentLimit}&prevKey=${prevKey}`;
+        const response = await fetch(exportUrl);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch part ${part}`);
+        }
+
+        const text = await response.text();
+        const lines = text.trim().split('\n');
+        
+        // lines[0] is header. If only header, no data.
+        if (lines.length <= 1) {
+          break;
+        }
+
+        const blob = new Blob([text], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `unhealthy_containers_${state.toLowerCase()}_part${part}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        const recordsInChunk = lines.length - 1;
+        totalExported += recordsInChunk;
+        
+        const lastLine = lines[lines.length - 1];
+        const lastContainerId = parseInt(lastLine.split(',')[0], 10);
+        
+        if (isNaN(lastContainerId)) {
+          throw new Error("Failed to parse container ID for pagination");
+        }
+        
+        prevKey = lastContainerId;
+        
+        if (recordsInChunk < currentLimit) {
+          break;
+        }
+        
+        part++;
+      }
+      
+      message.success(`Successfully exported ${totalExported} ${label} containers.`);
+    } catch (error: any) {
+      console.error("Export failed:", error);
+      message.error(`Export failed: ${error.message || error}`);
+    } finally {
+      hideMessage();
+    }
   }, [selectedTab, exportLimit]);
 
   const highlightData = (

@@ -27,6 +27,7 @@ import static org.apache.hadoop.ozone.recon.ReconConstants.RECON_QUERY_MIN_CONTA
 import static org.apache.hadoop.ozone.recon.ReconConstants.RECON_QUERY_PREVKEY;
 
 import java.io.BufferedOutputStream;
+import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
@@ -54,7 +55,6 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.StreamingOutput;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
 import org.apache.hadoop.hdds.scm.container.ContainerID;
 import org.apache.hadoop.hdds.scm.container.ContainerInfo;
@@ -67,7 +67,6 @@ import org.apache.hadoop.ozone.om.helpers.BucketLayout;
 import org.apache.hadoop.ozone.om.helpers.OmKeyInfo;
 import org.apache.hadoop.ozone.om.helpers.OmKeyLocationInfo;
 import org.apache.hadoop.ozone.om.helpers.OmKeyLocationInfoGroup;
-import org.apache.hadoop.ozone.recon.ReconServerConfigKeys;
 import org.apache.hadoop.ozone.recon.ReconUtils;
 import org.apache.hadoop.ozone.recon.api.types.ContainerDiscrepancyInfo;
 import org.apache.hadoop.ozone.recon.api.types.ContainerKeyPrefix;
@@ -465,6 +464,7 @@ public class ContainerEndpoint {
    *
    * @param state The container state to filter by, or null for all.
    * @param limit The maximum number of records to return, 0 for unlimited.
+   * @param prevKey The previous container ID to skip, for pagination.
    * @return {@link Response} containing the CSV StreamingOutput.
    */
   @GET
@@ -472,7 +472,13 @@ public class ContainerEndpoint {
   @Produces("text/csv")
   public Response exportUnhealthyContainers(
       @QueryParam("state") String state,
-      @DefaultValue("0") @QueryParam(RECON_QUERY_LIMIT) int limit) {
+      @DefaultValue("0") @QueryParam(RECON_QUERY_LIMIT) int limit,
+      @DefaultValue(PREV_CONTAINER_ID_DEFAULT_VALUE) @QueryParam(RECON_QUERY_PREVKEY) long prevKey) {
+
+    if (limit < 0) {
+      throw new WebApplicationException("The limit query parameter must be "
+          + "greater than or equal to 0.", Response.Status.BAD_REQUEST);
+    }
 
     ContainerSchemaDefinition.UnHealthyContainerStates internalState = null;
     if (StringUtils.isNotEmpty(state)) {
@@ -488,13 +494,13 @@ public class ContainerEndpoint {
     StreamingOutput stream = outputStream -> {
       try (BufferedOutputStream bos = new BufferedOutputStream(outputStream, 256 * 1024);
            Cursor<UnhealthyContainersRecord> cursor =
-               containerHealthSchemaManager.getUnhealthyContainersCursor(filterState, limit)) {
+               containerHealthSchemaManager.getUnhealthyContainersCursor(filterState, limit, prevKey)) {
         
-        PrintWriter writer = new PrintWriter(new OutputStreamWriter(bos, StandardCharsets.UTF_8));
+        BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(bos, StandardCharsets.UTF_8));
         
         // Write CSV header
-        writer.println("container_id,container_state,in_state_since," +
-            "expected_replica_count,actual_replica_count,replica_delta");
+        writer.write("container_id,container_state,in_state_since," +
+            "expected_replica_count,actual_replica_count,replica_delta\n");
         
         StringBuilder sb = new StringBuilder(128);
         while (cursor.hasNext()) {
@@ -505,8 +511,8 @@ public class ContainerEndpoint {
               .append(rec.getInStateSince()).append(',')
               .append(rec.getExpectedReplicaCount()).append(',')
               .append(rec.getActualReplicaCount()).append(',')
-              .append(rec.getReplicaDelta());
-          writer.println(sb);
+              .append(rec.getReplicaDelta()).append('\n');
+          writer.write(sb.toString());
         }
         writer.flush();
       } catch (Exception e) {
