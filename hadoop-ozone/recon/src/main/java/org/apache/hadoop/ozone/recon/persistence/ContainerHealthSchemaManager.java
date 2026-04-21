@@ -386,6 +386,23 @@ public class ContainerHealthSchemaManager {
    * Returns a streaming cursor over unhealthy container records.
    * Caller MUST close the cursor.
    *
+   * Final Complete Query Examples:
+   * Example 1: Export 50,000 MISSING containers, starting after container ID 12345
+   *
+   * SELECT * FROM unhealthy_containers
+   * WHERE container_state = 'MISSING'
+   *   AND container_id > 12345
+   * ORDER BY container_id ASC
+   * LIMIT 50000
+   * JDBC will fetch 10,000 rows at a time (5 batches total)
+   *
+   * Example 2: Export all 100,000 containers (all states), no pagination
+   *
+   * SELECT * FROM unhealthy_containers
+   * ORDER BY container_state ASC, container_id ASC
+   * LIMIT 100000
+   * JDBC will fetch 10,000 rows at a time (10 batches total)
+   *
    * @param state filter by state, or null for all states
    * @param limit max records to return, 0 = unlimited
    * @param prevKey previous container ID to skip, for pagination
@@ -394,24 +411,27 @@ public class ContainerHealthSchemaManager {
   public Cursor<UnhealthyContainersRecord> getUnhealthyContainersCursor(
       UnHealthyContainerStates state, int limit, long prevKey) {
     DSLContext dslContext = containerSchemaDefinition.getDSLContext();
+
+    // In plain SQL: SELECT * FROM unhealthy_containers
     org.jooq.SelectQuery<UnhealthyContainersRecord> query = dslContext.selectFrom(UNHEALTHY_CONTAINERS).getQuery();
 
     if (state != null) {
+      // Filtering by ONE specific state (e.g., state = "MISSING")
+      // WHERE container_state = 'MISSING'
       query.addConditions(UNHEALTHY_CONTAINERS.CONTAINER_STATE.eq(state.toString()));
       if (prevKey > 0) {
+        // AND container_id > 12345
         query.addConditions(UNHEALTHY_CONTAINERS.CONTAINER_ID.gt(prevKey));
       }
-      // Single-state filter: ordering by container_state is redundant (every
-      // row has the same value).  ORDER BY container_id alone lets Derby walk
-      // the composite index idx_state_container_id in order and return rows
-      // immediately — no sort step, eliminating "time to first byte" delay.
+      // ORDER BY container_id ASC
       query.addOrderBy(UNHEALTHY_CONTAINERS.CONTAINER_ID.asc());
     } else {
+      // Exporting ALL states (state = null)
       if (prevKey > 0) {
+        // WHERE container_id > 12345
         query.addConditions(UNHEALTHY_CONTAINERS.CONTAINER_ID.gt(prevKey));
       }
-      // All-states query: order by state first, then container_id.  This
-      // matches the composite index order so Derby can still avoid a sort.
+      // ORDER BY container_state ASC, container_id ASC
       query.addOrderBy(
           UNHEALTHY_CONTAINERS.CONTAINER_STATE.asc(),
           UNHEALTHY_CONTAINERS.CONTAINER_ID.asc()
@@ -422,8 +442,8 @@ public class ContainerHealthSchemaManager {
       query.addLimit(limit);
     }
 
-    // Set a fetch size to improve streaming throughput by reducing JDBC round-trips.
-    // 10,000 is a reasonable default for Derby to balance memory and network overhead.
+    // This doesn't change the SQL query.
+    // It tells JDBC: "When you fetch data, bring me 10,000 rows at a time, not one-by-one"
     query.fetchSize(10000);
 
     return query.fetchLazy();
