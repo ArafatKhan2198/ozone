@@ -200,13 +200,6 @@ const Containers: React.FC<{}> = () => {
     const state = tabToExportState[selectedTab];
     const label = tabToLabel[selectedTab];
 
-    if (exportLimit > 0 && exportLimit <= 500000) {
-      const exportUrl = `/api/v1/containers/unhealthy/export?state=${state}&limit=${exportLimit}`;
-      window.open(exportUrl, '_blank');
-      message.success(`Exporting ${label} containers as CSV (Limit: ${exportLimit})`);
-      return;
-    }
-
     const chunkSize = 500000;
     let prevKey = 0;
     let part = 1;
@@ -215,7 +208,7 @@ const Containers: React.FC<{}> = () => {
 
     try {
       while (true) {
-        const currentLimit = exportLimit === 0 ? chunkSize : Math.min(chunkSize, exportLimit - totalExported);
+        const currentLimit = exportLimit === -1 ? chunkSize : Math.min(chunkSize, exportLimit - totalExported);
         if (currentLimit <= 0) break;
 
         const exportUrl = `/api/v1/containers/unhealthy/export?state=${state}&limit=${currentLimit}&prevKey=${prevKey}`;
@@ -226,14 +219,15 @@ const Containers: React.FC<{}> = () => {
         }
 
         const text = await response.text();
-        const lines = text.trim().split('\n');
-        
-        // lines[0] is header. If only header, no data.
-        if (lines.length <= 1) {
-          break;
-        }
 
-        const blob = new Blob([text], { type: 'text/csv' });
+        // Extract #last_container_id trailer written by the backend as the final line.
+        // This avoids parsing CSV rows and is safe regardless of field content.
+        const trailerMatch = text.match(/^#last_container_id:(\d+)$/m);
+        const lastContainerId = trailerMatch ? parseInt(trailerMatch[1], 10) : 0;
+
+        // Strip the trailer comment before saving so the downloaded file is clean CSV.
+        const cleanCsv = text.replace(/^#last_container_id:\d+\n?$/m, '');
+        const blob = new Blob([cleanCsv], { type: 'text/csv' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -243,21 +237,14 @@ const Containers: React.FC<{}> = () => {
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
 
-        const recordsInChunk = lines.length - 1;
-        totalExported += recordsInChunk;
-        
-        const lastLine = lines[lines.length - 1];
-        const lastContainerId = parseInt(lastLine.split(',')[0], 10);
-        
-        if (isNaN(lastContainerId)) {
-          throw new Error("Failed to parse container ID for pagination");
-        }
-        
-        prevKey = lastContainerId;
-        
-        if (recordsInChunk < currentLimit) {
+        totalExported += currentLimit;
+
+        // lastContainerId === 0 means no rows were written — export is complete.
+        if (!lastContainerId || isNaN(lastContainerId)) {
           break;
         }
+
+        prevKey = lastContainerId;
         
         part++;
       }
@@ -377,7 +364,7 @@ const Containers: React.FC<{}> = () => {
                   { value: 10000, label: '10K Records' },
                   { value: 100000, label: '100K Records' },
                   { value: 1000000, label: '1M Records' },
-                  { value: 0, label: 'Complete' }
+                  { value: -1, label: 'Complete' }
                 ]}
               />
               <Tooltip title={`Export ${tabToLabel[selectedTab]} containers as CSV`}>

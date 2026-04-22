@@ -1959,7 +1959,6 @@ public class TestContainerEndpoint {
 
   @Test
   public void testExportUnhealthyContainersValidState() throws IOException, TimeoutException {
-    // Setup: Create unhealthy container records
     putContainerInfos(15);
     uuid1 = newDatanode("host1", "127.0.0.1");
     uuid2 = newDatanode("host2", "127.0.0.2");
@@ -1967,114 +1966,220 @@ public class TestContainerEndpoint {
     uuid4 = newDatanode("host4", "127.0.0.4");
     createUnhealthyRecords(5, 4, 3, 2, 1);
 
-    // Test: Call the export endpoint with valid state
     Response response = containerEndpoint.exportUnhealthyContainers(
         "MISSING", 100, 0);
 
-    // Verify: Response is 200 OK
     assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
 
-    // Verify: Content-Type is text/csv
-    assertEquals("text/csv", response.getHeaderString("Content-Type"));
-
-    // Verify: Content-Disposition header is present
+    // Content-Disposition must indicate attachment with correct filename prefix
     String contentDisposition = response.getHeaderString("Content-Disposition");
     assertNotNull(contentDisposition);
     assertTrue(contentDisposition.contains("attachment"));
     assertTrue(contentDisposition.contains("unhealthy_containers_missing"));
 
-    // Verify: CSV has correct header and data
     StreamingOutput streamingOutput = (StreamingOutput) response.getEntity();
     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
     streamingOutput.write(outputStream);
     String csvOutput = outputStream.toString("UTF-8");
     String[] lines = csvOutput.split("\n");
 
-    // First line should be the header
-    assertTrue(lines[0].contains("container_id"));
-    assertTrue(lines[0].contains("container_state"));
-    assertTrue(lines[0].contains("in_state_since"));
+    // First line is the CSV header
+    assertEquals("container_id,container_state,in_state_since," +
+        "expected_replica_count,actual_replica_count,replica_delta", lines[0]);
 
-    // Should have 5 MISSING containers (plus header = 6 lines)
-    assertEquals(6, lines.length);
+    // 5 MISSING containers + 1 header row + 1 trailer comment
+    assertEquals(7, lines.length);
 
-    // All data rows should contain MISSING state
-    for (int i = 1; i < lines.length; i++) {
+    // All data rows must contain MISSING state (skip header and trailer)
+    for (int i = 1; i < lines.length - 1; i++) {
       assertTrue(lines[i].contains("MISSING"));
     }
+
+    // Trailer comment must be present and have a positive container ID
+    String trailerLine = lines[lines.length - 1];
+    assertTrue(trailerLine.startsWith("#last_container_id:"));
+    long lastId = Long.parseLong(trailerLine.split(":")[1]);
+    assertTrue(lastId > 0);
+  }
+
+  @Test
+  public void testExportUnhealthyContainersMissingStateParam() {
+    // state is required — empty/null must return 400
+    WebApplicationException ex1 = assertThrows(
+        WebApplicationException.class,
+        () -> containerEndpoint.exportUnhealthyContainers("", 100, 0)
+    );
+    assertEquals(Response.Status.BAD_REQUEST.getStatusCode(),
+        ex1.getResponse().getStatus());
+
+    WebApplicationException ex2 = assertThrows(
+        WebApplicationException.class,
+        () -> containerEndpoint.exportUnhealthyContainers(null, 100, 0)
+    );
+    assertEquals(Response.Status.BAD_REQUEST.getStatusCode(),
+        ex2.getResponse().getStatus());
   }
 
   @Test
   public void testExportUnhealthyContainersInvalidState() {
-    // Test: Call export endpoint with invalid state
     WebApplicationException exception = assertThrows(
         WebApplicationException.class,
         () -> containerEndpoint.exportUnhealthyContainers(
             "INVALID_STATE", 100, 0)
     );
-
-    // Verify: Returns 400 Bad Request
     assertEquals(Response.Status.BAD_REQUEST.getStatusCode(),
         exception.getResponse().getStatus());
   }
 
   @Test
+  public void testExportUnhealthyContainersNegativeLimitRejected() {
+    // limit < -1 must return 400; -1 (unlimited) is valid
+    WebApplicationException exception = assertThrows(
+        WebApplicationException.class,
+        () -> containerEndpoint.exportUnhealthyContainers("MISSING", -2, 0)
+    );
+    assertEquals(Response.Status.BAD_REQUEST.getStatusCode(),
+        exception.getResponse().getStatus());
+  }
+
+  @Test
+  public void testExportUnhealthyContainersEmptyResultSet()
+      throws IOException, TimeoutException {
+    // No records inserted for OVER_REPLICATED — CSV should contain only the header
+    putContainerInfos(5);
+    uuid1 = newDatanode("host1", "127.0.0.1");
+    uuid2 = newDatanode("host2", "127.0.0.2");
+    uuid3 = newDatanode("host3", "127.0.0.3");
+    uuid4 = newDatanode("host4", "127.0.0.4");
+    createUnhealthyRecords(5, 0, 0, 0, 0);
+
+    Response response = containerEndpoint.exportUnhealthyContainers(
+        "OVER_REPLICATED", -1, 0);
+
+    assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+
+    StreamingOutput streamingOutput = (StreamingOutput) response.getEntity();
+    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+    streamingOutput.write(outputStream);
+    String csvOutput = outputStream.toString("UTF-8");
+
+    // Only header + trailer, no data rows
+    String[] lines = csvOutput.trim().split("\n");
+    assertEquals(2, lines.length); // header + #last_container_id:0
+    assertTrue(lines[0].contains("container_id"));
+    assertEquals("#last_container_id:0", lines[1]);
+  }
+
+  @Test
   public void testExportUnhealthyContainersLimitParameter()
       throws IOException, TimeoutException {
-    // Setup: Create test data
     putContainerInfos(200);
     uuid1 = newDatanode("host1", "127.0.0.1");
     uuid2 = newDatanode("host2", "127.0.0.2");
     uuid3 = newDatanode("host3", "127.0.0.3");
     uuid4 = newDatanode("host4", "127.0.0.4");
 
-    // Create 150 MISSING containers
     for (int i = 0; i < 150; i++) {
       createUnhealthyRecord(i + 1,
           UnHealthyContainerStates.MISSING.toString(),
           3, 0, 3, null, false);
     }
 
-    // Test: Request 50 records
+    // Limit 50 — should return exactly 50 data rows
     Response response = containerEndpoint.exportUnhealthyContainers(
         "MISSING", 50, 0);
-
     assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
-
     StreamingOutput streamingOutput = (StreamingOutput) response.getEntity();
     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
     streamingOutput.write(outputStream);
-    String csvOutput = outputStream.toString("UTF-8");
-    String[] lines = csvOutput.split("\n");
+    String[] lines = outputStream.toString("UTF-8").split("\n");
+    assertEquals(52, lines.length); // 50 data + 1 header + 1 trailer
 
-    // Should return exactly what was requested + header
-    assertEquals(51, lines.length);
-
-    // Test: Request 100 records
-    response = containerEndpoint.exportUnhealthyContainers(
-        "MISSING", 100, 0);
-
+    // Limit 100 — should return exactly 100 data rows
+    response = containerEndpoint.exportUnhealthyContainers("MISSING", 100, 0);
     streamingOutput = (StreamingOutput) response.getEntity();
     outputStream = new ByteArrayOutputStream();
     streamingOutput.write(outputStream);
-    csvOutput = outputStream.toString("UTF-8");
-    lines = csvOutput.split("\n");
+    lines = outputStream.toString("UTF-8").split("\n");
+    assertEquals(102, lines.length); // 100 data + 1 header + 1 trailer
 
-    // Should return exactly 100 + header
-    assertEquals(101, lines.length);
-
-    // Test: Request 0 (all records)
-    response = containerEndpoint.exportUnhealthyContainers(
-        "MISSING", 0, 0);
-
+    // Limit -1 (unlimited) — should return all 150 data rows
+    response = containerEndpoint.exportUnhealthyContainers("MISSING", -1, 0);
     streamingOutput = (StreamingOutput) response.getEntity();
     outputStream = new ByteArrayOutputStream();
     streamingOutput.write(outputStream);
-    csvOutput = outputStream.toString("UTF-8");
-    lines = csvOutput.split("\n");
+    lines = outputStream.toString("UTF-8").split("\n");
+    assertEquals(152, lines.length); // 150 data + 1 header + 1 trailer
+  }
 
-    // Should return all 150 records + header
-    assertEquals(151, lines.length);
+  @Test
+  public void testExportUnhealthyContainersPrevKeyPagination()
+      throws IOException, TimeoutException {
+    // Insert 10 MISSING containers with IDs 1–10
+    putContainerInfos(10);
+    uuid1 = newDatanode("host1", "127.0.0.1");
+    uuid2 = newDatanode("host2", "127.0.0.2");
+    uuid3 = newDatanode("host3", "127.0.0.3");
+    uuid4 = newDatanode("host4", "127.0.0.4");
+    for (int i = 1; i <= 10; i++) {
+      createUnhealthyRecord(i, UnHealthyContainerStates.MISSING.toString(),
+          3, 0, 3, null, false);
+    }
+
+    // Helper to extract last_container_id from trailer
+    java.util.function.Function<String, Long> extractLastId = csv -> {
+      java.util.regex.Matcher m = java.util.regex.Pattern
+          .compile("^#last_container_id:(\\d+)$", java.util.regex.Pattern.MULTILINE)
+          .matcher(csv);
+      return m.find() ? Long.parseLong(m.group(1)) : 0L;
+    };
+
+    // Fetch first 5 (prevKey = 0)
+    Response page1 = containerEndpoint.exportUnhealthyContainers("MISSING", 5, 0);
+    ByteArrayOutputStream out1 = new ByteArrayOutputStream();
+    ((StreamingOutput) page1.getEntity()).write(out1);
+    String csv1 = out1.toString("UTF-8");
+    // data lines = total lines minus header and trailer
+    String[] page1Lines = csv1.split("\n");
+    long dataLinesPage1 = Arrays.stream(page1Lines)
+        .filter(l -> !l.startsWith("#") && !l.startsWith("container_id")).count();
+    assertEquals(5, dataLinesPage1);
+
+    long lastIdPage1 = extractLastId.apply(csv1);
+    assertEquals(5, lastIdPage1);
+
+    // Fetch next 5 using prevKey = lastIdPage1
+    Response page2 = containerEndpoint.exportUnhealthyContainers("MISSING", 5, lastIdPage1);
+    ByteArrayOutputStream out2 = new ByteArrayOutputStream();
+    ((StreamingOutput) page2.getEntity()).write(out2);
+    String csv2 = out2.toString("UTF-8");
+    String[] page2Lines = csv2.split("\n");
+    long dataLinesPage2 = Arrays.stream(page2Lines)
+        .filter(l -> !l.startsWith("#") && !l.startsWith("container_id")).count();
+    assertEquals(5, dataLinesPage2);
+
+    long lastIdPage2 = extractLastId.apply(csv2);
+    assertEquals(10, lastIdPage2);
+
+    // Verify no overlap — all page1 container IDs must be < all page2 container IDs
+    long[] ids1 = Arrays.stream(page1Lines)
+        .filter(l -> !l.startsWith("#") && !l.startsWith("container_id"))
+        .mapToLong(l -> Long.parseLong(l.split(",")[0])).toArray();
+    long[] ids2 = Arrays.stream(page2Lines)
+        .filter(l -> !l.startsWith("#") && !l.startsWith("container_id"))
+        .mapToLong(l -> Long.parseLong(l.split(",")[0])).toArray();
+    for (long id1 : ids1) {
+      for (long id2 : ids2) {
+        assertTrue(id1 < id2, "Page 1 IDs must be strictly less than page 2 IDs");
+      }
+    }
+
+    // Fetch page 3 — no more records, trailer must show last_container_id:0
+    Response page3 = containerEndpoint.exportUnhealthyContainers("MISSING", 5, lastIdPage2);
+    ByteArrayOutputStream out3 = new ByteArrayOutputStream();
+    ((StreamingOutput) page3.getEntity()).write(out3);
+    String csv3 = out3.toString("UTF-8");
+    assertEquals(0L, (long) extractLastId.apply(csv3));
   }
 
 }

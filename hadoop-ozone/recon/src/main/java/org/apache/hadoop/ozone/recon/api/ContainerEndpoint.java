@@ -458,12 +458,12 @@ public class ContainerEndpoint {
   }
 
   /**
-   * Export all unhealthy containers into a CSV file by streaming the results directly
-   * from the database without holding them in the JVM heap.
+   * Export unhealthy containers for a given state into a CSV file by streaming
+   * the results directly from the database without holding them in the JVM heap.
    *
-   * @param state The container state to filter by, or null for all.
-   * @param limit The maximum number of records to return, 0 for unlimited.
-   * @param prevKey The previous container ID to skip, for pagination.
+   * @param state The container state to filter by (required).
+   * @param limit The maximum number of records to return, -1 for unlimited.
+   * @param prevKey The previous container ID to skip, for cursor-based pagination.
    * @return {@link Response} containing the CSV StreamingOutput.
    */
   @GET
@@ -471,21 +471,24 @@ public class ContainerEndpoint {
   @Produces("text/csv")
   public Response exportUnhealthyContainers(
       @QueryParam("state") String state,
-      @DefaultValue("0") @QueryParam(RECON_QUERY_LIMIT) int limit,
+      @DefaultValue("-1") @QueryParam(RECON_QUERY_LIMIT) int limit,
       @DefaultValue(PREV_CONTAINER_ID_DEFAULT_VALUE) @QueryParam(RECON_QUERY_PREVKEY) long prevKey) {
 
-    if (limit < 0) {
-      throw new WebApplicationException("The limit query parameter must be "
-          + "greater than or equal to 0.", Response.Status.BAD_REQUEST);
+    if (StringUtils.isEmpty(state)) {
+      throw new WebApplicationException("The state query parameter is required.",
+          Response.Status.BAD_REQUEST);
     }
 
-    ContainerSchemaDefinition.UnHealthyContainerStates internalState = null;
-    if (StringUtils.isNotEmpty(state)) {
-      try {
-        internalState = ContainerSchemaDefinition.UnHealthyContainerStates.valueOf(state);
-      } catch (IllegalArgumentException e) {
-        throw new WebApplicationException(e, Response.Status.BAD_REQUEST);
-      }
+    if (limit < -1) {
+      throw new WebApplicationException("The limit query parameter must be "
+          + "greater than or equal to -1.", Response.Status.BAD_REQUEST);
+    }
+
+    ContainerSchemaDefinition.UnHealthyContainerStates internalState;
+    try {
+      internalState = ContainerSchemaDefinition.UnHealthyContainerStates.valueOf(state);
+    } catch (IllegalArgumentException e) {
+      throw new WebApplicationException(e, Response.Status.BAD_REQUEST);
     }
 
     final ContainerSchemaDefinition.UnHealthyContainerStates filterState = internalState;
@@ -494,18 +497,20 @@ public class ContainerEndpoint {
       try (BufferedOutputStream bos = new BufferedOutputStream(outputStream, 256 * 1024);
            Cursor<UnhealthyContainersRecord> cursor =
                containerHealthSchemaManager.getUnhealthyContainersCursor(filterState, limit, prevKey)) {
-        
+
         BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(bos, StandardCharsets.UTF_8));
-        
+
         // Write CSV header
         writer.write("container_id,container_state,in_state_since," +
             "expected_replica_count,actual_replica_count,replica_delta\n");
-        
+
+        long lastContainerId = 0;
         StringBuilder sb = new StringBuilder(128);
         while (cursor.hasNext()) {
           UnhealthyContainersRecord rec = cursor.fetchNext();
+          lastContainerId = rec.getContainerId();
           sb.setLength(0);
-          sb.append(rec.getContainerId()).append(',')
+          sb.append(lastContainerId).append(',')
               .append(rec.getContainerState()).append(',')
               .append(rec.getInStateSince()).append(',')
               .append(rec.getExpectedReplicaCount()).append(',')
@@ -513,19 +518,30 @@ public class ContainerEndpoint {
               .append(rec.getReplicaDelta()).append('\n');
           writer.write(sb.toString());
         }
+
+        // Write the last container ID as a trailer comment so the client can
+        // use it as prevKey for the next paginated chunk without parsing CSV rows.
+        // Lines starting with '#' are ignored by standard CSV parsers.
+        writer.write("#last_container_id:" + lastContainerId + "\n");
         writer.flush();
+      } catch (IOException e) {
+        // Client disconnected or network error mid-stream — the 200 OK header
+        // has already been sent so we cannot change the status. Abort cleanly.
+        LOG.warn("Client disconnected during CSV export", e);
+        throw e;
       } catch (Exception e) {
+        // Unexpected DB/application error — wrap and rethrow as IOException so
+        // the JAX-RS container aborts the connection, giving the browser a
+        // failed/incomplete download signal.
         LOG.error("Error streaming unhealthy containers CSV", e);
-        throw new WebApplicationException(e, Response.Status.INTERNAL_SERVER_ERROR);
+        throw new IOException("Internal error during CSV export", e);
       }
     };
 
     String filename = String.format("unhealthy_containers_%s_%d.csv",
-        state != null ? state.toLowerCase() : "all",
-        System.currentTimeMillis());
+        state.toLowerCase(), System.currentTimeMillis());
 
     return Response.ok(stream)
-        .header("Content-Type", "text/csv")
         .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
         .build();
   }
