@@ -225,6 +225,12 @@ const Containers: React.FC<{}> = () => {
         const trailerMatch = text.match(/^#last_container_id:(\d+)$/m);
         const lastContainerId = trailerMatch ? parseInt(trailerMatch[1], 10) : 0;
 
+        // Count actual data rows returned (excluding header and trailer comment)
+        const actualRecords = text.split('\n')
+          .filter(l => l && !l.startsWith('#') && !l.startsWith('container_id'))
+          .length;
+        totalExported += actualRecords;
+
         // Strip the trailer comment before saving so the downloaded file is clean CSV.
         const cleanCsv = text.replace(/^#last_container_id:\d+\n?$/m, '');
         const blob = new Blob([cleanCsv], { type: 'text/csv' });
@@ -236,8 +242,6 @@ const Containers: React.FC<{}> = () => {
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
-
-        totalExported += currentLimit;
 
         // lastContainerId === 0 means no rows were written — export is complete.
         if (!lastContainerId || isNaN(lastContainerId)) {

@@ -2032,14 +2032,22 @@ public class TestContainerEndpoint {
   }
 
   @Test
-  public void testExportUnhealthyContainersNegativeLimitRejected() {
+  public void testExportUnhealthyContainersInvalidLimitRejected() {
     // limit < -1 must return 400; -1 (unlimited) is valid
-    WebApplicationException exception = assertThrows(
+    WebApplicationException ex1 = assertThrows(
         WebApplicationException.class,
         () -> containerEndpoint.exportUnhealthyContainers("MISSING", -2, 0)
     );
     assertEquals(Response.Status.BAD_REQUEST.getStatusCode(),
-        exception.getResponse().getStatus());
+        ex1.getResponse().getStatus());
+
+    // limit == 0 must return 400; 0 rows is not a valid request
+    WebApplicationException ex2 = assertThrows(
+        WebApplicationException.class,
+        () -> containerEndpoint.exportUnhealthyContainers("MISSING", 0, 0)
+    );
+    assertEquals(Response.Status.BAD_REQUEST.getStatusCode(),
+        ex2.getResponse().getStatus());
   }
 
   @Test

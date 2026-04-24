@@ -462,7 +462,7 @@ public class ContainerEndpoint {
    * the results directly from the database without holding them in the JVM heap.
    *
    * @param state The container state to filter by (required).
-   * @param limit The maximum number of records to return, -1 for unlimited.
+   * @param limit The maximum number of records to return (must be positive or -1 for unlimited).
    * @param prevKey The previous container ID to skip, for cursor-based pagination.
    * @return {@link Response} containing the CSV StreamingOutput.
    */
@@ -479,9 +479,9 @@ public class ContainerEndpoint {
           Response.Status.BAD_REQUEST);
     }
 
-    if (limit < -1) {
+    if (limit < -1 || limit == 0) {
       throw new WebApplicationException("The limit query parameter must be "
-          + "greater than or equal to -1.", Response.Status.BAD_REQUEST);
+          + "a positive integer or -1 (unlimited).", Response.Status.BAD_REQUEST);
     }
 
     ContainerSchemaDefinition.UnHealthyContainerStates internalState;
