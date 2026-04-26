@@ -254,6 +254,21 @@ public final class  ReconServerConfigKeys {
   public static final long OZONE_RECON_SCM_CONTAINER_ID_BATCH_SIZE_DEFAULT = 1_000_000;
 
   /**
+   * JDBC fetch size for streaming unhealthy container exports.
+   * Controls how many rows Derby/JDBC returns per round-trip when executing
+   * {@code /api/v1/containers/unhealthy/export}.
+   *
+   * <p>Larger values reduce round-trips but increase memory per batch.
+   * For example, {@code fetchSize=10000} → 1,000 round-trips for 10M rows;
+   * {@code fetchSize=50000} → 200 round-trips but ~5× memory per batch.
+   *
+   * <p>Default: 10,000 rows per fetch (~1 MB per batch)
+   */
+  public static final String OZONE_RECON_UNHEALTHY_CONTAINER_FETCH_SIZE =
+      "ozone.recon.unhealthy.container.fetch.size";
+  public static final int OZONE_RECON_UNHEALTHY_CONTAINER_FETCH_SIZE_DEFAULT = 10_000;
+
+  /**
    * Private constructor for utility class.
    */
   private ReconServerConfigKeys() {

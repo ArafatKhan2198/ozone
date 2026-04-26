@@ -273,7 +273,8 @@ public class TestUnhealthyContainersDerbyPerformance {
 
     dao = injector.getInstance(UnhealthyContainersDao.class);
     schemaDefinition = injector.getInstance(ContainerSchemaDefinition.class);
-    schemaManager = new ContainerHealthSchemaManager(schemaDefinition);
+    schemaManager = new ContainerHealthSchemaManager(schemaDefinition,
+        new org.apache.hadoop.hdds.conf.OzoneConfiguration());
   }
 
   // -----------------------------------------------------------------------

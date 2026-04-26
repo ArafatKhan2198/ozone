@@ -32,6 +32,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.ozone.recon.ReconServerConfigKeys;
 import org.apache.ozone.recon.schema.ContainerSchemaDefinition;
 import org.apache.ozone.recon.schema.ContainerSchemaDefinition.UnHealthyContainerStates;
 import org.apache.ozone.recon.schema.generated.tables.records.UnhealthyContainersRecord;
@@ -68,11 +70,16 @@ public class ContainerHealthSchemaManager {
   static final int MAX_DELETE_CHUNK_SIZE = 1_000;
 
   private final ContainerSchemaDefinition containerSchemaDefinition;
+  private final int jdbcFetchSize;
 
   @Inject
   public ContainerHealthSchemaManager(
-      ContainerSchemaDefinition containerSchemaDefinition) {
+      ContainerSchemaDefinition containerSchemaDefinition,
+      OzoneConfiguration conf) {
     this.containerSchemaDefinition = containerSchemaDefinition;
+    this.jdbcFetchSize = conf.getInt(
+        ReconServerConfigKeys.OZONE_RECON_UNHEALTHY_CONTAINER_FETCH_SIZE,
+        ReconServerConfigKeys.OZONE_RECON_UNHEALTHY_CONTAINER_FETCH_SIZE_DEFAULT);
   }
 
   /**
@@ -420,8 +427,9 @@ public class ContainerHealthSchemaManager {
       query.addLimit(limit);
     }
 
-    // Fetch 10,000 rows per JDBC round-trip instead of one-by-one.
-    query.fetchSize(10000);
+    // Controls how many rows Derby returns per JDBC round-trip.
+    // Configurable via ozone.recon.unhealthy.container.fetch.size (default: 10,000).
+    query.fetchSize(jdbcFetchSize);
 
     return query.fetchLazy();
   }
