@@ -190,7 +190,7 @@ public class ContainerEndpoint {
             .map(container -> {
               ContainerMetadata containerMetadata =
                   new ContainerMetadata(container.getContainerID());
-              containerMetadata.setNumberOfKeys(container.getNumberOfKeys());
+              containerMetadata.setNumberOfBlocks(container.getNumberOfKeys());
               return containerMetadata;
             })
             .collect(Collectors.toList());
@@ -546,7 +546,7 @@ public class ContainerEndpoint {
         DeletedContainerInfo deletedContainerInfo = new DeletedContainerInfo();
         deletedContainerInfo.setContainerID(containerInfo.getContainerID());
         deletedContainerInfo.setPipelineID(containerInfo.getPipelineID());
-        deletedContainerInfo.setNumberOfKeys(containerInfo.getNumberOfKeys());
+        deletedContainerInfo.setNumberOfBlocks(containerInfo.getNumberOfKeys());
         deletedContainerInfo.setContainerState(containerInfo.getState().name());
         deletedContainerInfo.setStateEnterTime(
             containerInfo.getStateEnterTime().toEpochMilli());
@@ -657,8 +657,8 @@ public class ContainerEndpoint {
           ContainerDiscrepancyInfo containerDiscrepancyInfo =
               new ContainerDiscrepancyInfo();
           containerDiscrepancyInfo.setContainerID(nonSCMContainer.getContainerID());
-          containerDiscrepancyInfo.setNumberOfKeys(
-              nonSCMContainer.getNumberOfKeys());
+          containerDiscrepancyInfo.setNumberOfBlocks(
+              nonSCMContainer.getNumberOfBlocks());
           containerDiscrepancyInfo.setPipelines(
               nonSCMContainer.getPipelines());
           containerDiscrepancyInfo.setExistsAt("OM");
@@ -688,7 +688,7 @@ public class ContainerEndpoint {
         nonOMContainers.forEach(containerInfo -> {
           ContainerDiscrepancyInfo containerDiscrepancyInfo = new ContainerDiscrepancyInfo();
           containerDiscrepancyInfo.setContainerID(containerInfo.getContainerID());
-          containerDiscrepancyInfo.setNumberOfKeys(0);
+          containerDiscrepancyInfo.setNumberOfBlocks(0);
           List<Pipeline> pipelines = new ArrayList<>();
           PipelineID pipelineID = null;
           try {
@@ -742,7 +742,7 @@ public class ContainerEndpoint {
    * [
    *   {
    *     "containerId": 2,
-   *     "numberOfKeys": 2,
+   *     "numberOfBlocks": 2,
    *     "pipelines": []
    *   }
    * ]
@@ -792,7 +792,7 @@ public class ContainerEndpoint {
       containerDiscrepancyInfoList = omContainersDeletedInSCM.stream().map(containerMetadataEntry -> {
         ContainerDiscrepancyInfo containerDiscrepancyInfo = new ContainerDiscrepancyInfo();
         containerDiscrepancyInfo.setContainerID(containerMetadataEntry.getContainerID());
-        containerDiscrepancyInfo.setNumberOfKeys(containerMetadataEntry.getNumberOfKeys());
+        containerDiscrepancyInfo.setNumberOfBlocks(containerMetadataEntry.getNumberOfBlocks());
         containerDiscrepancyInfo.setPipelines(containerMetadataEntry.getPipelines());
         return containerDiscrepancyInfo;
       }).collect(Collectors.toList());

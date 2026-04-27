@@ -35,9 +35,9 @@ public class DeletedContainerInfo {
   @JsonInclude(JsonInclude.Include.NON_NULL)
   private PipelineID pipelineID;
 
-  @JsonProperty("numberOfKeys")
+  @JsonProperty("numberOfBlocks")
   @JsonInclude(JsonInclude.Include.NON_DEFAULT)
-  private long numberOfKeys;
+  private long numberOfBlocks;
 
   @JsonProperty("containerState")
   @JsonInclude(JsonInclude.Include.NON_EMPTY)
@@ -83,12 +83,12 @@ public class DeletedContainerInfo {
     this.pipelineID = pipelineID;
   }
 
-  public long getNumberOfKeys() {
-    return numberOfKeys;
+  public long getNumberOfBlocks() {
+    return numberOfBlocks;
   }
 
-  public void setNumberOfKeys(long numberOfKeys) {
-    this.numberOfKeys = numberOfKeys;
+  public void setNumberOfBlocks(long numberOfBlocks) {
+    this.numberOfBlocks = numberOfBlocks;
   }
 
   public String getContainerState() {

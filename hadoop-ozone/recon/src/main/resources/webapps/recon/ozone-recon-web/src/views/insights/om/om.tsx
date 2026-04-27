@@ -45,7 +45,7 @@ interface IContainerResponse {
   SCMContainerState: string;
   existsAt: string;
   pipelines: string[];
-  numberOfKeys: number;
+  numberOfBlocks: number;
 }
 
 interface IKeyLevelResponse {
@@ -152,10 +152,10 @@ const MISMATCH_TAB_COLUMNS = [
 
   },
   {
-    title: 'Count Of Keys',
-    dataIndex: 'numberOfKeys',
-    key: 'numberOfKeys',
-    sorter: (a: IContainerResponse, b: IContainerResponse) => a.numberOfKeys - b.numberOfKeys
+    title: 'Count Of Blocks',
+    dataIndex: 'numberOfBlocks',
+    key: 'numberOfBlocks',
+    sorter: (a: IContainerResponse, b: IContainerResponse) => a.numberOfBlocks - b.numberOfBlocks
   },
   {
     title: 'Pipelines',
@@ -260,10 +260,10 @@ const DELETED_TAB_COLUMNS = [
     isSearchable: true
   },
   {
-    title: 'Count Of Keys',
-    dataIndex: 'numberOfKeys',
-    key: 'numberOfKeys',
-    sorter: (a: IContainerResponse, b: IContainerResponse) => a.numberOfKeys - b.numberOfKeys
+    title: 'Count Of Blocks',
+    dataIndex: 'numberOfBlocks',
+    key: 'numberOfBlocks',
+    sorter: (a: IContainerResponse, b: IContainerResponse) => a.numberOfBlocks - b.numberOfBlocks
   },
   {
     title: 'Pipelines',
@@ -479,7 +479,7 @@ export class Om extends React.Component<Record<string, object>, IOmdbInsightsSta
   handlefsoNonfsoMenuChange: MenuProps["onClick"] = (e) => {
     if (e.key === 'fso') {
       this.fetchOpenKeys(true, false);
-    }
+    }1
     else {
       this.fetchOpenKeys(false, true);
     }

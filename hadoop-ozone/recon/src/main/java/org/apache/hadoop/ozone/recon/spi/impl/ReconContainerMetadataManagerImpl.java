@@ -479,7 +479,7 @@ public class ReconContainerMetadataManagerImpl
         ContainerMetadata containerMetadata = new ContainerMetadata(currentKey.getKey().getContainerId());
         do {
           ContainerKeyPrefix containerKeyPrefix = this.currentKey.getKey();
-          containerMetadata.setNumberOfKeys(containerMetadata.getNumberOfKeys() + 1);
+          containerMetadata.setNumberOfBlocks(containerMetadata.getNumberOfBlocks() + 1);
           getPipelines(containerKeyPrefix).forEach(pipeline -> {
             pipelines.putIfAbsent(pipeline.getId(), pipeline);
           });

@@ -649,11 +649,11 @@ public class TestContainerEndpoint {
     ContainerMetadata containerMetadata = iterator.next();
     assertEquals(1L, containerMetadata.getContainerID());
     // Number of keys for CID:1
-    assertEquals(5L, containerMetadata.getNumberOfKeys());
+    assertEquals(5L, containerMetadata.getNumberOfBlocks());
 
     containerMetadata = iterator.next();
     assertEquals(2L, containerMetadata.getContainerID());
-    assertEquals(5L, containerMetadata.getNumberOfKeys());
+    assertEquals(5L, containerMetadata.getNumberOfBlocks());
 
     // test if limit works as expected
     response = containerEndpoint.getContainers(2, 0L);
@@ -1605,7 +1605,7 @@ public class TestContainerEndpoint {
     assertEquals(expectedPipelineId, pipelines.get(0).getId(),
         "Container " + containerId + " should have correct pipeline");
     assertEquals("SCM", info.getExistsAt());
-    assertEquals(0, info.getNumberOfKeys());
+    assertEquals(0, info.getNumberOfBlocks());
     // Verify list isolation
     for (List<Pipeline> other : otherPipelineLists) {
       if (other != null) {
@@ -1717,7 +1717,7 @@ public class TestContainerEndpoint {
         responsePrevKey);
 
     assertEquals(3, containerDiscrepancyInfoList.get(0)
-        .getNumberOfKeys());
+        .getNumberOfBlocks());
     assertEquals(1, containerDiscrepancyInfoList.size());
   }
 
@@ -1752,7 +1752,7 @@ public class TestContainerEndpoint {
         responsePrevKey);
     assertEquals(2, responsePrevKey);
 
-    assertEquals(omContainers.get(2L).getNumberOfKeys(), containerDiscrepancyInfoList.get(0).getNumberOfKeys());
+    assertEquals(omContainers.get(2L).getNumberOfBlocks(), containerDiscrepancyInfoList.get(0).getNumberOfBlocks());
     assertEquals(1, containerDiscrepancyInfoList.size());
   }
 
@@ -1792,7 +1792,7 @@ public class TestContainerEndpoint {
         responsePrevKey);
 
     assertEquals(3, containerDiscrepancyInfoList.get(0)
-        .getNumberOfKeys());
+        .getNumberOfBlocks());
     assertEquals(1, containerDiscrepancyInfoList.size());
   }
 
@@ -1834,7 +1834,7 @@ public class TestContainerEndpoint {
         responsePrevKey);
 
     assertEquals(2, containerDiscrepancyInfoList.get(0)
-        .getNumberOfKeys());
+        .getNumberOfBlocks());
     assertEquals(1, containerDiscrepancyInfoList.size());
     assertEquals(2, containerDiscrepancyInfoList.get(0).getContainerID());
   }

@@ -119,10 +119,10 @@ const ContainerMismatchTable: React.FC<ContainerMismatchTableProps> = ({
       width: '20%'
     },
     {
-      title: 'Count Of Keys',
-      dataIndex: 'numberOfKeys',
-      key: 'numberOfKeys',
-      sorter: (a: Container, b: Container) => a.numberOfKeys - b.numberOfKeys
+      title: 'Count Of Blocks',
+      dataIndex: 'numberOfBlocks',
+      key: 'numberOfBlocks',
+      sorter: (a: Container, b: Container) => a.numberOfBlocks - b.numberOfBlocks
     },
     {
       title: 'Pipelines',

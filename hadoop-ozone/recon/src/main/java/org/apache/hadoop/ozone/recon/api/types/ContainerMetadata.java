@@ -33,8 +33,8 @@ public class ContainerMetadata {
   @XmlElement(name = "ContainerID")
   private long containerID;
 
-  @XmlElement(name = "NumberOfKeys")
-  private long numberOfKeys;
+  @XmlElement(name = "NumberOfBlocks")
+  private long numberOfBlocks;
 
   @JsonProperty("pipelines")
   private List<Pipeline> pipelines;
@@ -51,12 +51,12 @@ public class ContainerMetadata {
     this.containerID = containerID;
   }
 
-  public long getNumberOfKeys() {
-    return numberOfKeys;
+  public long getNumberOfBlocks() {
+    return numberOfBlocks;
   }
 
-  public void setNumberOfKeys(long numberOfKeys) {
-    this.numberOfKeys = numberOfKeys;
+  public void setNumberOfBlocks(long numberOfBlocks) {
+    this.numberOfBlocks = numberOfBlocks;
   }
 
   public List<Pipeline> getPipelines() {

@@ -407,7 +407,7 @@ public class TestReconReplicationManager extends AbstractReconSqlDBTest {
     // No assertion needed - just verify no exceptions thrown
   }
 
-  private ContainerInfo mockContainerInfo(long containerId, long numberOfKeys,
+  private ContainerInfo mockContainerInfo(long containerId, long numberOfBlocks,
       long usedBytes, int requiredNodes) {
     ContainerInfo containerInfo = mock(ContainerInfo.class);
     ReplicationConfig replicationConfig = mock(ReplicationConfig.class);
@@ -416,7 +416,7 @@ public class TestReconReplicationManager extends AbstractReconSqlDBTest {
 
     when(containerInfo.getContainerID()).thenReturn(containerId);
     when(containerInfo.containerID()).thenReturn(ContainerID.valueOf(containerId));
-    when(containerInfo.getNumberOfKeys()).thenReturn(numberOfKeys);
+    when(containerInfo.getNumberOfKeys()).thenReturn(numberOfBlocks);
     when(containerInfo.getUsedBytes()).thenReturn(usedBytes);
     when(containerInfo.getReplicationConfig()).thenReturn(replicationConfig);
     when(containerInfo.getState()).thenReturn(HddsProtos.LifeCycleState.CLOSED);

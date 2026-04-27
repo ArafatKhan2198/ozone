@@ -30,8 +30,8 @@ public class ContainerDiscrepancyInfo {
   @JsonProperty("containerId")
   private long containerID;
 
-  @JsonProperty("numberOfKeys")
-  private long numberOfKeys;
+  @JsonProperty("numberOfBlocks")
+  private long numberOfBlocks;
 
   @JsonProperty("pipelines")
   private List<Pipeline> pipelines;
@@ -52,12 +52,12 @@ public class ContainerDiscrepancyInfo {
     this.containerID = containerID;
   }
 
-  public long getNumberOfKeys() {
-    return numberOfKeys;
+  public long getNumberOfBlocks() {
+    return numberOfBlocks;
   }
 
-  public void setNumberOfKeys(long numberOfKeys) {
-    this.numberOfKeys = numberOfKeys;
+  public void setNumberOfBlocks(long numberOfBlocks) {
+    this.numberOfBlocks = numberOfBlocks;
   }
 
   public List<Pipeline> getPipelines() {

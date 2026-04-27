@@ -72,7 +72,7 @@ export type Pipelines = {
 // Container Mismatch Info
 export type Container = {
   containerId: number;
-  numberOfKeys: number;
+  numberOfBlocks: number;
   pipelines: Pipelines[];
   existsAt: 'OM' | 'SCM';
 }
