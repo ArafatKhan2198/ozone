@@ -479,7 +479,7 @@ export class Om extends React.Component<Record<string, object>, IOmdbInsightsSta
   handlefsoNonfsoMenuChange: MenuProps["onClick"] = (e) => {
     if (e.key === 'fso') {
       this.fetchOpenKeys(true, false);
-    }1
+    }
     else {
       this.fetchOpenKeys(false, true);
     }
