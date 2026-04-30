@@ -254,6 +254,40 @@ public final class  ReconServerConfigKeys {
   public static final long OZONE_RECON_SCM_CONTAINER_ID_BATCH_SIZE_DEFAULT = 1_000_000;
 
   /**
+   * JDBC fetch size for CSV exports.
+   * Default: 10,000 rows per fetch
+   */
+  public static final String OZONE_RECON_UNHEALTHY_CONTAINER_FETCH_SIZE =
+      "ozone.recon.unhealthy.container.fetch.size";
+  public static final int OZONE_RECON_UNHEALTHY_CONTAINER_FETCH_SIZE_DEFAULT = 10_000;
+
+  /**
+   * Worker thread pool size for async CSV exports.
+   * Single-threaded to avoid concurrent database access.
+   * Default: 1
+   */
+  public static final String OZONE_RECON_EXPORT_WORKER_THREADS =
+      "ozone.recon.export.worker.threads";
+  public static final int OZONE_RECON_EXPORT_WORKER_THREADS_DEFAULT = 1;
+
+  /**
+   * Max export jobs in queue (global limit).
+   * Jobs beyond this limit will be rejected.
+   * Default: 10
+   */
+  public static final String OZONE_RECON_EXPORT_MAX_JOBS_TOTAL =
+      "ozone.recon.export.max.jobs.total";
+  public static final int OZONE_RECON_EXPORT_MAX_JOBS_TOTAL_DEFAULT = 10;
+
+  /**
+   * Directory to store export CSV files.
+   * Default: /tmp/recon/exports
+   */
+  public static final String OZONE_RECON_EXPORT_DIRECTORY =
+      "ozone.recon.export.directory";
+  public static final String OZONE_RECON_EXPORT_DIRECTORY_DEFAULT = "/tmp/recon/exports";
+
+  /**
    * Private constructor for utility class.
    */
   private ReconServerConfigKeys() {

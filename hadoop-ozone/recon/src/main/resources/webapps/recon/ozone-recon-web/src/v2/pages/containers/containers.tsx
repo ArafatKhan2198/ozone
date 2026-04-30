@@ -18,7 +18,8 @@
 
 import React, { useState, useEffect } from "react";
 import moment from "moment";
-import { Card, Row, Tabs } from "antd";
+import { Button, Card, message, Modal, Row, Tabs, Tooltip } from "antd";
+import { DownloadOutlined } from "@ant-design/icons";
 import { ValueType } from "react-select/src/types";
 
 import Search from "@/v2/components/search/search";
@@ -99,6 +100,7 @@ const Containers: React.FC<{}> = () => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedTab, setSelectedTab] = useState<string>('1');
   const [searchColumn, setSearchColumn] = useState<'containerID' | 'pipelineID'>('containerID');
+  const [exportInProgress, setExportInProgress] = useState<boolean>(false);
 
   const debouncedSearch = useDebounce(searchTerm, 300);
 
@@ -265,6 +267,123 @@ const Containers: React.FC<{}> = () => {
     clusterState.refetch();
   };
 
+  // Helper function to trigger browser download
+  const downloadFile = (jobId: string, filename: string) => {
+    const downloadUrl = `/api/v1/containers/unhealthy/export/${jobId}/download`;
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Export handler with async polling
+  const handleExportCsv = async () => {
+    const state = TAB_STATE_MAP[selectedTab];
+    const label = ['Missing','Under-Replicated','Over-Replicated','Mis-Replicated','Mismatched Replicas'][Number(selectedTab)-1];
+
+    setExportInProgress(true);
+    let hideLoadingMsg: (() => void) | null = message.loading(`Starting export of ${label} containers...`, 0);
+
+    try {
+      // 1. Submit export job
+      const startResponse = await fetch(`/api/v1/containers/unhealthy/export?state=${state}&userId=webui`, {
+        method: 'POST'
+      });
+      if (!startResponse.ok) {
+        if (hideLoadingMsg) hideLoadingMsg();
+        let errorMsg = `Failed to start export: ${startResponse.status}`;
+        try {
+          const errorJson = await startResponse.json();
+          errorMsg = errorJson.message || errorJson.error || errorMsg;
+        } catch {
+          // If not JSON, try text
+          const errorText = await startResponse.text();
+          if (errorText && !errorText.includes('<html>')) {
+            errorMsg = errorText;
+          }
+        }
+        throw new Error(errorMsg);
+      }
+      const job = await startResponse.json();
+      const jobId = job.jobId;
+
+      // 2. Poll for completion
+      let attempts = 0;
+      const maxAttempts = 120; // 10 minutes with 5s intervals
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 5000)); // 5s poll interval
+
+        const statusResponse = await fetch(`/api/v1/containers/unhealthy/export/${jobId}`);
+        if (!statusResponse.ok) {
+          throw new Error(`Failed to check job status: ${statusResponse.status}`);
+        }
+        const statusJob = await statusResponse.json();
+
+        // Handle different statuses
+        if (statusJob.status === 'QUEUED') {
+          const position = statusJob.queuePosition || 0;
+          if (hideLoadingMsg) {
+            hideLoadingMsg();
+            hideLoadingMsg = null;
+          }
+          message.info(`Export queued. Position: #${position} in queue`, 2);
+        } else if (statusJob.status === 'RUNNING') {
+          if (hideLoadingMsg) {
+            hideLoadingMsg();
+            hideLoadingMsg = null;
+          }
+          const percent = statusJob.progressPercent || 0;
+          const records = statusJob.totalRecords.toLocaleString();
+          const total = statusJob.estimatedTotal > 0 ? statusJob.estimatedTotal.toLocaleString() : '?';
+          message.loading(`Processing export... ${percent}% (${records} / ${total} records)`, 2);
+        } else if (statusJob.status === 'COMPLETED') {
+          if (hideLoadingMsg) hideLoadingMsg();
+          
+          // Extract filename from full path
+          const filename = statusJob.filePath ? statusJob.filePath.split('/').pop() : 'export file';
+          
+          Modal.success({
+            title: 'Export Completed!',
+            content: (
+              <div>
+                <p>{statusJob.totalRecords.toLocaleString()} records exported successfully.</p>
+                <Button 
+                  type="primary" 
+                  icon={<DownloadOutlined />}
+                  onClick={() => downloadFile(jobId, filename)}
+                  style={{ marginTop: '12px' }}>
+                  Download TAR ({filename})
+                </Button>
+              </div>
+            ),
+            okText: 'Close',
+            width: 500
+          });
+
+          setExportInProgress(false);
+          return;
+        } else if (statusJob.status === 'FAILED') {
+          if (hideLoadingMsg) hideLoadingMsg();
+          throw new Error(statusJob.errorMessage || 'Export failed');
+        }
+
+        attempts++;
+      }
+
+      // Timeout
+      if (hideLoadingMsg) hideLoadingMsg();
+      throw new Error('Export timed out after 10 minutes');
+
+    } catch (error: any) {
+      if (hideLoadingMsg) hideLoadingMsg();
+      console.error("Export failed:", error);
+      message.error(`Export failed: ${error.message || error}`);
+      setExportInProgress(false);
+    }
+  };
+
   const autoReload = useAutoReload(loadContainersData);
 
   const {
@@ -348,18 +467,30 @@ const Containers: React.FC<{}> = () => {
                 onTagClose={() => { }}
                 columnLength={columnOptions.length} />
             </div>
-            <Search
-              disabled={currentTabState.data.length === 0}
-              searchOptions={SearchableColumnOpts}
-              searchInput={searchTerm}
-              searchColumn={searchColumn}
-              onSearchChange={
-                (e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)
-              }
-              onChange={(value) => {
-                setSearchTerm('');
-                setSearchColumn(value as 'containerID' | 'pipelineID');
-              }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Search
+                disabled={currentTabState.data.length === 0}
+                searchOptions={SearchableColumnOpts}
+                searchInput={searchTerm}
+                searchColumn={searchColumn}
+                onSearchChange={
+                  (e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)
+                }
+                onChange={(value) => {
+                  setSearchTerm('');
+                  setSearchColumn(value as 'containerID' | 'pipelineID');
+                }} />
+              <Tooltip title={`Export all ${['Missing','Under-Replicated','Over-Replicated','Mis-Replicated','Mismatched Replicas'][Number(selectedTab)-1]} containers as CSV`}>
+                <Button
+                  type='primary'
+                  icon={<DownloadOutlined />}
+                  onClick={handleExportCsv}
+                  loading={exportInProgress}
+                  disabled={exportInProgress}>
+                  Export CSV
+                </Button>
+              </Tooltip>
+            </div>
           </div>
           <Tabs defaultActiveKey='1'
             onChange={(activeKey: string) => handleTabChange(activeKey)}>

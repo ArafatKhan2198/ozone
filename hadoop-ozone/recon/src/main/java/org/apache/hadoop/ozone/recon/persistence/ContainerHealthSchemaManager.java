@@ -36,6 +36,7 @@ import org.apache.ozone.recon.schema.ContainerSchemaDefinition;
 import org.apache.ozone.recon.schema.ContainerSchemaDefinition.UnHealthyContainerStates;
 import org.apache.ozone.recon.schema.generated.tables.records.UnhealthyContainersRecord;
 import org.jooq.Condition;
+import org.jooq.Cursor;
 import org.jooq.DSLContext;
 import org.jooq.OrderField;
 import org.jooq.Record;
@@ -393,6 +394,82 @@ public class ContainerHealthSchemaManager {
     } catch (Exception e) {
       LOG.error("Failed to clear UNHEALTHY_CONTAINERS table's unhealthy container records", e);
     }
+  }
+
+  /**
+   * Returns a streaming cursor over unhealthy container records for a given state.
+   * Caller MUST close the cursor.
+   *
+   * Generated SQL example (50,000 MISSING containers, starting after container ID 12345):
+   *
+   * SELECT * FROM unhealthy_containers
+   * WHERE container_state = 'MISSING'
+   *   AND container_id > 12345
+   * ORDER BY container_id ASC
+   * LIMIT 50000
+   *
+   * @param state filter by state (required)
+   * @param limit max records to return, -1 = unlimited
+   * @param prevKey previous container ID to skip, for cursor-based pagination
+   * @return Cursor returning UnhealthyContainersRecord
+   */
+  /**
+   * Get the total count of unhealthy containers for a given state.
+   *
+   * @param state The container health state to filter by
+   * @param limit Maximum number of records to count (-1 for unlimited)
+   * @param prevKey Container ID offset for cursor-based pagination
+   * @return Total count of matching containers
+   */
+  public long getUnhealthyContainersCount(
+      UnHealthyContainerStates state, int limit, long prevKey) {
+    DSLContext dslContext = containerSchemaDefinition.getDSLContext();
+    
+    Condition whereCondition = UNHEALTHY_CONTAINERS.CONTAINER_STATE.eq(state.toString());
+    
+    if (prevKey > 0) {
+      whereCondition = whereCondition.and(UNHEALTHY_CONTAINERS.CONTAINER_ID.gt(prevKey));
+    }
+    
+    long totalCount = dslContext.selectCount()
+        .from(UNHEALTHY_CONTAINERS)
+        .where(whereCondition)
+        .fetchOne(0, long.class);
+    
+    // If limit is set and less than total, return the limit as estimated total
+    if (limit > 0 && limit < totalCount) {
+      return limit;
+    }
+    
+    return totalCount;
+  }
+
+  public Cursor<UnhealthyContainersRecord> getUnhealthyContainersCursor(
+      UnHealthyContainerStates state, int limit, long prevKey) {
+    DSLContext dslContext = containerSchemaDefinition.getDSLContext();
+    SelectQuery<UnhealthyContainersRecord> query = dslContext.selectFrom(UNHEALTHY_CONTAINERS).getQuery();
+
+    // WHERE container_state = ?
+    query.addConditions(UNHEALTHY_CONTAINERS.CONTAINER_STATE.eq(state.toString()));
+
+    if (prevKey > 0) {
+      // AND container_id > ?  (cursor-based pagination)
+      query.addConditions(UNHEALTHY_CONTAINERS.CONTAINER_ID.gt(prevKey));
+    }
+
+    // ORDER BY container_id ASC — matches composite index (state, container_id),
+    // so Derby walks it in order with no sort step.
+    query.addOrderBy(UNHEALTHY_CONTAINERS.CONTAINER_ID.asc());
+
+    if (limit > 0) {
+      query.addLimit(limit);
+    }
+
+    // Controls how many rows Derby returns per JDBC round-trip.
+    // Default is 10,000 rows.
+    query.fetchSize(10000);
+
+    return query.fetchLazy();
   }
 
   /**
