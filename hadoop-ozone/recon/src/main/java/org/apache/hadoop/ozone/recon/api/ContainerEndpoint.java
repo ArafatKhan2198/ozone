@@ -514,6 +514,24 @@ public class ContainerEndpoint {
   }
 
   /**
+   * List all export jobs tracked by the server (any status).
+   *
+   * @return Response containing a list of ExportJob objects
+   */
+  @GET
+  @Path("/unhealthy/export")
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response listExportJobs() {
+    List<ExportJob> jobs = exportJobManager.getAllJobs();
+    for (ExportJob job : jobs) {
+      if (job.getStatus() == ExportJob.JobStatus.QUEUED) {
+        job.setQueuePosition(exportJobManager.getQueuePosition(job.getJobId()));
+      }
+    }
+    return Response.ok(jobs).build();
+  }
+
+  /**
    * Start an async CSV export job for unhealthy containers.
    * Returns immediately with a job ID that the client can poll.
    *

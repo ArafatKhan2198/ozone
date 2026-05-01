@@ -122,3 +122,21 @@ export type ContainerState = {
   misReplicatedCount: number;
   replicaMismatchCount: number;
 }
+
+export type ExportJobStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+
+export type ExportJob = {
+  jobId: string;
+  userId: string;
+  state: string;
+  status: ExportJobStatus;
+  queuePosition: number;
+  totalRecords: number;
+  estimatedTotal: number;
+  progressPercent: number;
+  filePath: string;
+  errorMessage: string | null;
+  submittedAt: number;
+  startedAt: number;
+  completedAt: number;
+}

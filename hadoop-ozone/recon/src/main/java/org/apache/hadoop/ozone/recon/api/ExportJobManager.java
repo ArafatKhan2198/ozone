@@ -28,8 +28,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -56,7 +58,7 @@ import org.slf4j.LoggerFactory;
 @Singleton
 public class ExportJobManager {
   private static final Logger LOG = LoggerFactory.getLogger(ExportJobManager.class);
-  private static final int MAX_QUEUE_SIZE = 10;
+  private static final int MAX_QUEUE_SIZE = 4;
   
   private final Map<String, ExportJob> jobTracker = new ConcurrentHashMap<>();
   private final LinkedHashMap<String, ExportJob> jobQueue = new LinkedHashMap<>();
@@ -123,6 +125,13 @@ public class ExportJobManager {
 
   public ExportJob getJob(String jobId) {
     return jobTracker.get(jobId);
+  }
+
+  /**
+   * Returns all tracked export jobs (any status).
+   */
+  public List<ExportJob> getAllJobs() {
+    return new ArrayList<>(jobTracker.values());
   }
   
   /**
@@ -321,6 +330,12 @@ public class ExportJobManager {
       deleteFileQuietly(tarFilePath);
       LOG.error("Export job {} failed", job.getJobId(), e);
     } finally {
+      // 3-second cooldown before the next queued job is picked up by the single worker thread.
+      try {
+        Thread.sleep(3000);
+      } catch (InterruptedException ie) {
+        Thread.currentThread().interrupt();
+      }
       runningTasks.remove(job.getJobId());
     }
   }
