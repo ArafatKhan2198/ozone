@@ -32,6 +32,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.ozone.recon.ReconServerConfigKeys;
 import org.apache.ozone.recon.schema.ContainerSchemaDefinition;
 import org.apache.ozone.recon.schema.ContainerSchemaDefinition.UnHealthyContainerStates;
 import org.apache.ozone.recon.schema.generated.tables.records.UnhealthyContainersRecord;
@@ -68,11 +70,16 @@ public class ContainerHealthSchemaManager {
   static final int MAX_DELETE_CHUNK_SIZE = 1_000;
 
   private final ContainerSchemaDefinition containerSchemaDefinition;
+  private final int unhealthyContainersFetchSize;
 
   @Inject
   public ContainerHealthSchemaManager(
-      ContainerSchemaDefinition containerSchemaDefinition) {
+      ContainerSchemaDefinition containerSchemaDefinition,
+      OzoneConfiguration conf) {
     this.containerSchemaDefinition = containerSchemaDefinition;
+    this.unhealthyContainersFetchSize = conf.getInt(
+        ReconServerConfigKeys.OZONE_RECON_UNHEALTHY_CONTAINER_FETCH_SIZE,
+        ReconServerConfigKeys.OZONE_RECON_UNHEALTHY_CONTAINER_FETCH_SIZE_DEFAULT);
   }
 
   /**
@@ -397,23 +404,6 @@ public class ContainerHealthSchemaManager {
   }
 
   /**
-   * Returns a streaming cursor over unhealthy container records for a given state.
-   * Caller MUST close the cursor.
-   *
-   * Generated SQL example (50,000 MISSING containers, starting after container ID 12345):
-   *
-   * SELECT * FROM unhealthy_containers
-   * WHERE container_state = 'MISSING'
-   *   AND container_id > 12345
-   * ORDER BY container_id ASC
-   * LIMIT 50000
-   *
-   * @param state filter by state (required)
-   * @param limit max records to return, -1 = unlimited
-   * @param prevKey previous container ID to skip, for cursor-based pagination
-   * @return Cursor returning UnhealthyContainersRecord
-   */
-  /**
    * Get the total count of unhealthy containers for a given state.
    *
    * @param state The container health state to filter by
@@ -444,6 +434,25 @@ public class ContainerHealthSchemaManager {
     return totalCount;
   }
 
+  /**
+   * Returns a streaming cursor over unhealthy container records for a given state.
+   * Caller MUST close the cursor.
+   *
+   * <p>Generated SQL example (50,000 MISSING containers, starting after container ID 12345):</p>
+   *
+   * <pre>
+   * SELECT * FROM unhealthy_containers
+   * WHERE container_state = 'MISSING'
+   *   AND container_id &gt; 12345
+   * ORDER BY container_id ASC
+   * LIMIT 50000
+   * </pre>
+   *
+   * @param state filter by state (required)
+   * @param limit max records to return, -1 = unlimited
+   * @param prevKey previous container ID to skip, for cursor-based pagination
+   * @return Cursor returning UnhealthyContainersRecord
+   */
   public Cursor<UnhealthyContainersRecord> getUnhealthyContainersCursor(
       UnHealthyContainerStates state, int limit, long prevKey) {
     DSLContext dslContext = containerSchemaDefinition.getDSLContext();
@@ -466,8 +475,8 @@ public class ContainerHealthSchemaManager {
     }
 
     // Controls how many rows Derby returns per JDBC round-trip.
-    // Default is 10,000 rows.
-    query.fetchSize(10000);
+    // Configurable via ozone.recon.unhealthy.container.fetch.size (default 10,000).
+    query.fetchSize(this.unhealthyContainersFetchSize);
 
     return query.fetchLazy();
   }

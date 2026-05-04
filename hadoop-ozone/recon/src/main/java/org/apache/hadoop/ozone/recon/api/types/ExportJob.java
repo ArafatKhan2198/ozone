@@ -130,10 +130,6 @@ public class ExportJob {
     this.totalRecords = totalRecords;
   }
 
-  public void incrementTotalRecords() {
-    this.totalRecords++;
-  }
-
   public long getEstimatedTotal() {
     return estimatedTotal;
   }

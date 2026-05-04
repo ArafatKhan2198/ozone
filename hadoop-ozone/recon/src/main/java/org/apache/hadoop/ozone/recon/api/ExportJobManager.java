@@ -59,8 +59,7 @@ import org.slf4j.LoggerFactory;
 @Singleton
 public class ExportJobManager {
   private static final Logger LOG = LoggerFactory.getLogger(ExportJobManager.class);
-  private static final int MAX_QUEUE_SIZE = 4;
-  
+
   private final Map<String, ExportJob> jobTracker = new ConcurrentHashMap<>();
   private final LinkedHashMap<String, ExportJob> jobQueue = new LinkedHashMap<>();
   private final Map<String, Future<?>> runningTasks = new ConcurrentHashMap<>();
@@ -68,6 +67,7 @@ public class ExportJobManager {
   private final ContainerHealthSchemaManager containerHealthSchemaManager;
   private final String exportDirectory;
   private final int maxDownloads;
+  private final int maxQueueSize;
 
   @Inject
   public ExportJobManager(ContainerHealthSchemaManager containerHealthSchemaManager,
@@ -90,6 +90,9 @@ public class ExportJobManager {
     this.maxDownloads = conf.getInt(
         ReconServerConfigKeys.OZONE_RECON_EXPORT_MAX_DOWNLOADS,
         ReconServerConfigKeys.OZONE_RECON_EXPORT_MAX_DOWNLOADS_DEFAULT);
+    this.maxQueueSize = conf.getInt(
+        ReconServerConfigKeys.OZONE_RECON_EXPORT_MAX_JOBS_TOTAL,
+        ReconServerConfigKeys.OZONE_RECON_EXPORT_MAX_JOBS_TOTAL_DEFAULT);
 
     // Create export directory if it doesn't exist
     try {
@@ -97,24 +100,50 @@ public class ExportJobManager {
     } catch (IOException e) {
       LOG.error("Failed to create export directory: {}", exportDirectory, e);
     }
-    
-    LOG.info("ExportJobManager initialized with single-threaded queue (max {} jobs)", MAX_QUEUE_SIZE);
+
+    // Clean any leftover TARs / working dirs from a previous run so disk
+    // is bounded by what was started in the current Recon process.
+    File dir = new File(exportDirectory);
+    File[] entries = dir.listFiles();
+    int removed = 0;
+    if (entries != null) {
+      for (File entry : entries) {
+        if (entry.isDirectory()) {
+          FileUtils.deleteQuietly(entry);
+        } else if (entry.getName().endsWith(".tar")) {
+          FileUtils.deleteQuietly(entry);
+        } else {
+          continue;
+        }
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      LOG.info("Startup cleanup: removed {} leftover export artifact(s) from {}",
+          removed, exportDirectory);
+    }
+
+    LOG.info("ExportJobManager initialized with single-threaded queue (max {} jobs)", maxQueueSize);
   }
 
   public synchronized String submitJob(String state) {
     // Reject duplicate: same state already queued or running
-    boolean stateAlreadyActive = jobQueue.values().stream().anyMatch(j -> j.getState().equals(state)) ||
-        jobTracker.values().stream().anyMatch(j -> j.getState().equals(state) && j.getStatus() == JobStatus.RUNNING);
-    if (stateAlreadyActive) {
+    boolean stateAlreadyExists = jobTracker.values().stream().anyMatch(
+        j -> j.getState().equals(state)
+            && (j.getStatus() == JobStatus.QUEUED
+                || j.getStatus() == JobStatus.RUNNING
+                || j.getStatus() == JobStatus.COMPLETED));
+    if (stateAlreadyExists) {
       throw new IllegalStateException(
-          "An export for state " + state + " is already queued or running. Please wait for it to complete.");
+          "An export for state " + state + " already exists. Please delete the existing export "
+              + "from the Completed Exports table before starting a new one.");
     }
 
     // Check global queue size limit
     synchronized (jobQueue) {
-      if (jobQueue.size() >= MAX_QUEUE_SIZE) {
+      if (jobQueue.size() >= maxQueueSize) {
         throw new IllegalStateException(
-            "Export queue is full (max " + MAX_QUEUE_SIZE + " jobs). Please try again later.");
+            "Export queue is full (max " + maxQueueSize + " jobs). Please try again later.");
       }
     }
     
@@ -350,12 +379,6 @@ public class ExportJobManager {
       FileUtils.deleteQuietly(new File(tarFilePath));
       LOG.error("Export job {} failed", job.getJobId(), e);
     } finally {
-      // 3-second cooldown before the next queued job is picked up by the single worker thread.
-      try {
-        Thread.sleep(3000);
-      } catch (InterruptedException ie) {
-        Thread.currentThread().interrupt();
-      }
       runningTasks.remove(job.getJobId());
     }
   }

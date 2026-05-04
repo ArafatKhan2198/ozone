@@ -209,9 +209,12 @@ const Containers: React.FC<{}> = () => {
   const handleSubmitExport = async () => {
     // Guard against race condition where exportJobs state may be stale
     if (exportJobs.some(
-      j => j.state === selectedExportState && (j.status === 'QUEUED' || j.status === 'RUNNING')
+      j => j.state === selectedExportState
+        && (j.status === 'QUEUED' || j.status === 'RUNNING' || j.status === 'COMPLETED')
     )) {
-      message.warning(`A ${selectedExportState} export is already queued or running.`);
+      message.warning(
+        `A ${selectedExportState} export already exists. Delete it from the Completed Exports table to start a new one.`,
+      );
       return;
     }
     setExportSubmitting(true);
@@ -415,7 +418,8 @@ const Containers: React.FC<{}> = () => {
   const activeJobs = exportJobs.filter(j => j.status === 'RUNNING' || j.status === 'QUEUED');
   const completedJobs = exportJobs.filter(j => j.status === 'COMPLETED' || j.status === 'FAILED');
   const isStateAlreadyActive = exportJobs.some(
-    j => j.state === selectedExportState && (j.status === 'QUEUED' || j.status === 'RUNNING')
+    j => j.state === selectedExportState
+      && (j.status === 'QUEUED' || j.status === 'RUNNING' || j.status === 'COMPLETED')
   );
 
   const statusColor: Record<string, string> = {
@@ -454,6 +458,20 @@ const Containers: React.FC<{}> = () => {
     ),
   };
 
+  const submittedColumn: ColumnsType<ExportJob>[0] = {
+    title: 'Submitted',
+    dataIndex: 'submittedAt',
+    key: 'submittedAt',
+    render: (ts: number) => ts ? moment(ts).format('MMM D, HH:mm:ss') : '—',
+  };
+
+  const startedColumn: ColumnsType<ExportJob>[0] = {
+    title: 'Started',
+    dataIndex: 'startedAt',
+    key: 'startedAt',
+    render: (ts: number) => ts ? moment(ts).format('MMM D, HH:mm:ss') : '—',
+  };
+
   // ── Active exports columns (RUNNING / QUEUED) ─────────────────────────────
   const activeExportColumns: ColumnsType<ExportJob> = [
     jobIdColumn,
@@ -469,6 +487,8 @@ const Containers: React.FC<{}> = () => {
           ? `#${record.queuePosition}`
           : '—',
     },
+    submittedColumn,
+    startedColumn,
     {
       title: 'Progress',
       key: 'progress',
@@ -505,18 +525,8 @@ const Containers: React.FC<{}> = () => {
       render: (n: number, record: ExportJob) =>
         record.status === 'COMPLETED' ? (n?.toLocaleString() ?? '—') : '—',
     },
-    {
-      title: 'Submitted',
-      dataIndex: 'submittedAt',
-      key: 'submittedAt',
-      render: (ts: number) => ts ? moment(ts).format('MMM D, HH:mm:ss') : '—',
-    },
-    {
-      title: 'Started',
-      dataIndex: 'startedAt',
-      key: 'startedAt',
-      render: (ts: number) => ts ? moment(ts).format('MMM D, HH:mm:ss') : '—',
-    },
+    submittedColumn,
+    startedColumn,
     {
       title: 'Completed',
       dataIndex: 'completedAt',
@@ -688,7 +698,7 @@ const Containers: React.FC<{}> = () => {
                   options={EXPORT_STATE_OPTIONS}
                   style={{ width: 200 }} />
                 <Tooltip title={isStateAlreadyActive
-                  ? `A ${selectedExportState} export is already queued or running`
+                  ? `A ${selectedExportState} export already exists. Delete it to start a new one.`
                   : ''}>
                   <Button
                     type='primary'

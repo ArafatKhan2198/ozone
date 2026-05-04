@@ -262,22 +262,15 @@ public final class  ReconServerConfigKeys {
   public static final int OZONE_RECON_UNHEALTHY_CONTAINER_FETCH_SIZE_DEFAULT = 10_000;
 
   /**
-   * Worker thread pool size for async CSV exports.
-   * Single-threaded to avoid concurrent database access.
-   * Default: 1
-   */
-  public static final String OZONE_RECON_EXPORT_WORKER_THREADS =
-      "ozone.recon.export.worker.threads";
-  public static final int OZONE_RECON_EXPORT_WORKER_THREADS_DEFAULT = 1;
-
-  /**
-   * Max export jobs in queue (global limit).
-   * Jobs beyond this limit will be rejected.
-   * Default: 10
+   * Max export jobs that can sit in the queue (waiting + executing) at once.
+   * Submissions beyond this limit are rejected with HTTP 429.
+   * Kept small because export is single-threaded and the unhealthy-container
+   * states it can be invoked for are bounded (~5).
+   * Default: 4
    */
   public static final String OZONE_RECON_EXPORT_MAX_JOBS_TOTAL =
       "ozone.recon.export.max.jobs.total";
-  public static final int OZONE_RECON_EXPORT_MAX_JOBS_TOTAL_DEFAULT = 10;
+  public static final int OZONE_RECON_EXPORT_MAX_JOBS_TOTAL_DEFAULT = 4;
 
   /**
    * Directory to store export CSV files.
