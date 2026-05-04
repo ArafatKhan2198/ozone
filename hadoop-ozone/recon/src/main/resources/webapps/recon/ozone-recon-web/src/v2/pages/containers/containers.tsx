@@ -245,12 +245,17 @@ const Containers: React.FC<{}> = () => {
   };
 
   // ── Download helper ───────────────────────────────────────────────────────
+  // Uses a hidden <a> so the browser streams the TAR directly to disk
+  // (no in-memory buffering — important for multi-GB exports).
   const downloadFile = (jobId: string) => {
     const link = document.createElement('a');
     link.href = `/api/v1/containers/unhealthy/export/${jobId}/download`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    // Backend has already incremented downloadCount; refresh so the UI reflects
+    // the new downloadsRemaining value without waiting for the next poll tick.
+    setTimeout(() => fetchExportJobs(), 500);
   };
 
   // ── Delete job helper ─────────────────────────────────────────────────────
@@ -532,14 +537,16 @@ const Containers: React.FC<{}> = () => {
           </Button>
         );
         if (record.status === 'COMPLETED') {
+          const limitReached = record.downloadsRemaining === 0;
           return (
             <div style={{ display: 'flex', gap: 8 }}>
               <Button
                 type='primary'
                 size='small'
                 icon={<DownloadOutlined />}
+                disabled={limitReached}
                 onClick={() => downloadFile(record.jobId)}>
-                Download
+                {limitReached ? 'Limit reached' : `Download (${record.downloadsRemaining} left)`}
               </Button>
               {deleteBtn}
             </div>

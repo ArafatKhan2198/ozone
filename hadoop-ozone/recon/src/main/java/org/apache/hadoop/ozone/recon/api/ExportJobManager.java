@@ -67,6 +67,7 @@ public class ExportJobManager {
   private final ExecutorService workerPool;
   private final ContainerHealthSchemaManager containerHealthSchemaManager;
   private final String exportDirectory;
+  private final int maxDownloads;
 
   @Inject
   public ExportJobManager(ContainerHealthSchemaManager containerHealthSchemaManager,
@@ -86,6 +87,9 @@ public class ExportJobManager {
       configuredDir = new File(reconDbDir, "exports").getAbsolutePath();
     }
     this.exportDirectory = configuredDir;
+    this.maxDownloads = conf.getInt(
+        ReconServerConfigKeys.OZONE_RECON_EXPORT_MAX_DOWNLOADS,
+        ReconServerConfigKeys.OZONE_RECON_EXPORT_MAX_DOWNLOADS_DEFAULT);
 
     // Create export directory if it doesn't exist
     try {
@@ -115,7 +119,7 @@ public class ExportJobManager {
     }
     
     String jobId = UUID.randomUUID().toString();
-    ExportJob job = new ExportJob(jobId, state);
+    ExportJob job = new ExportJob(jobId, state, maxDownloads);
     // Filename: export_{state}_{epochMs}.tar — human-readable and time-sortable
     String filePath = exportDirectory + "/export_" + state.toLowerCase()
         + "_" + System.currentTimeMillis() + ".tar";

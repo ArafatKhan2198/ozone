@@ -133,9 +133,11 @@ export type ExportJob = {
   totalRecords: number;
   estimatedTotal: number;
   progressPercent: number;
-  filePath: string;
+  fileName: string | null;
   errorMessage: string | null;
   submittedAt: number;
   startedAt: number;
   completedAt: number;
+  downloadCount: number;
+  downloadsRemaining: number;
 }

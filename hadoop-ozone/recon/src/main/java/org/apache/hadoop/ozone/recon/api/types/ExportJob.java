@@ -72,13 +72,21 @@ public class ExportJob {
   @JsonProperty("queuePosition")
   private int queuePosition;
 
-  public ExportJob(String jobId, String state) {
+  // Internal — not serialized
+  private int maxDownloads;
+
+  @JsonProperty("downloadCount")
+  private int downloadCount;
+
+  public ExportJob(String jobId, String state, int maxDownloads) {
     this.jobId = jobId;
     this.state = state;
     this.status = JobStatus.QUEUED;
     this.submittedAt = System.currentTimeMillis();
     this.totalRecords = 0;
     this.estimatedTotal = -1;
+    this.maxDownloads = maxDownloads;
+    this.downloadCount = 0;
   }
 
   public String getJobId() {
@@ -170,5 +178,26 @@ public class ExportJob {
   
   public void setQueuePosition(int queuePosition) {
     this.queuePosition = queuePosition;
+  }
+
+  public int getDownloadCount() {
+    return downloadCount;
+  }
+
+  public int getMaxDownloads() {
+    return maxDownloads;
+  }
+
+  @JsonProperty("downloadsRemaining")
+  public int getDownloadsRemaining() {
+    return Math.max(0, maxDownloads - downloadCount);
+  }
+
+  public synchronized boolean isDownloadAllowed() {
+    return downloadCount < maxDownloads;
+  }
+
+  public synchronized void incrementDownloadCount() {
+    downloadCount++;
   }
 }

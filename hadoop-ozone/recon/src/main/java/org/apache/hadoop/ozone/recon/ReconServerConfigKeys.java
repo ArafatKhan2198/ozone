@@ -291,6 +291,15 @@ public final class  ReconServerConfigKeys {
   public static final String OZONE_RECON_EXPORT_DIRECTORY_DEFAULT = "";
 
   /**
+   * Maximum number of times a completed export TAR file can be downloaded.
+   * Prevents repeated downloads from filling up network bandwidth or being misused.
+   * Default: 3
+   */
+  public static final String OZONE_RECON_EXPORT_MAX_DOWNLOADS =
+      "ozone.recon.export.max.downloads";
+  public static final int OZONE_RECON_EXPORT_MAX_DOWNLOADS_DEFAULT = 3;
+
+  /**
    * Private constructor for utility class.
    */
   private ReconServerConfigKeys() {

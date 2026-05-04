@@ -613,10 +613,24 @@ public class ContainerEndpoint {
       throw new WebApplicationException("Job not completed yet", Response.Status.CONFLICT);
     }
 
+    if (!job.isDownloadAllowed()) {
+      Map<String, String> errorResponse = new java.util.HashMap<>();
+      errorResponse.put("error", "Download limit reached");
+      errorResponse.put("message", "This export has reached its maximum download limit of "
+          + job.getMaxDownloads() + ".");
+      return Response.status(Response.Status.TOO_MANY_REQUESTS)
+          .entity(errorResponse)
+          .type(MediaType.APPLICATION_JSON)
+          .build();
+    }
+
     File file = new File(job.getFilePath());
     if (!file.exists()) {
       throw new WebApplicationException("Export file not found", Response.Status.NOT_FOUND);
     }
+
+    job.incrementDownloadCount();
+    LOG.info("Download {} of {} for job {}", job.getDownloadCount(), job.getMaxDownloads(), jobId);
 
     StreamingOutput stream = outputStream -> {
       try (FileInputStream fis = new FileInputStream(file);
@@ -630,11 +644,8 @@ public class ContainerEndpoint {
       }
     };
 
-    // Extract filename from full path (e.g., /tmp/recon/exports/export_missing_webui_d5854cc2.tar)
-    String filename = job.getFilePath().substring(job.getFilePath().lastIndexOf('/') + 1);
-
     return Response.ok(stream)
-        .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+        .header("Content-Disposition", "attachment; filename=\"" + job.getFileName() + "\"")
         .header("Content-Type", "application/x-tar")
         .build();
   }
