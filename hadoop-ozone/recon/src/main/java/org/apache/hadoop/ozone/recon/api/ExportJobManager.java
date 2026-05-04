@@ -90,7 +90,15 @@ public class ExportJobManager {
   }
 
   public synchronized String submitJob(String userId, String state, int limit, long prevKey) {
-    // Check queue size limit
+    // Reject duplicate: same state already queued or running
+    boolean stateAlreadyActive = jobQueue.values().stream().anyMatch(j -> j.getState().equals(state)) ||
+        jobTracker.values().stream().anyMatch(j -> j.getState().equals(state) && j.getStatus() == JobStatus.RUNNING);
+    if (stateAlreadyActive) {
+      throw new IllegalStateException(
+          "An export for state " + state + " is already queued or running. Please wait for it to complete.");
+    }
+
+    // Check global queue size limit
     synchronized (jobQueue) {
       if (jobQueue.size() >= MAX_QUEUE_SIZE) {
         throw new IllegalStateException(

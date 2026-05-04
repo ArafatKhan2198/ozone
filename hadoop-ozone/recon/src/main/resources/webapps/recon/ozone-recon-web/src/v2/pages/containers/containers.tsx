@@ -207,6 +207,13 @@ const Containers: React.FC<{}> = () => {
 
   // ── Export submit ─────────────────────────────────────────────────────────
   const handleSubmitExport = async () => {
+    // Guard against race condition where exportJobs state may be stale
+    if (exportJobs.some(
+      j => j.state === selectedExportState && (j.status === 'QUEUED' || j.status === 'RUNNING')
+    )) {
+      message.warning(`A ${selectedExportState} export is already queued or running.`);
+      return;
+    }
     setExportSubmitting(true);
     try {
       const response = await fetch(
@@ -394,6 +401,9 @@ const Containers: React.FC<{}> = () => {
   // ── Export jobs table helpers ─────────────────────────────────────────────
   const activeJobs = exportJobs.filter(j => j.status === 'RUNNING' || j.status === 'QUEUED');
   const completedJobs = exportJobs.filter(j => j.status === 'COMPLETED' || j.status === 'FAILED');
+  const isStateAlreadyActive = exportJobs.some(
+    j => j.state === selectedExportState && (j.status === 'QUEUED' || j.status === 'RUNNING')
+  );
 
   const statusColor: Record<string, string> = {
     QUEUED: 'blue',
@@ -481,6 +491,24 @@ const Containers: React.FC<{}> = () => {
       key: 'totalRecords',
       render: (n: number, record: ExportJob) =>
         record.status === 'COMPLETED' ? (n?.toLocaleString() ?? '—') : '—',
+    },
+    {
+      title: 'Submitted',
+      dataIndex: 'submittedAt',
+      key: 'submittedAt',
+      render: (ts: number) => ts ? moment(ts).format('MMM D, HH:mm:ss') : '—',
+    },
+    {
+      title: 'Started',
+      dataIndex: 'startedAt',
+      key: 'startedAt',
+      render: (ts: number) => ts ? moment(ts).format('MMM D, HH:mm:ss') : '—',
+    },
+    {
+      title: 'Completed',
+      dataIndex: 'completedAt',
+      key: 'completedAt',
+      render: (ts: number) => ts ? moment(ts).format('MMM D, HH:mm:ss') : '—',
     },
     {
       title: 'Action',
@@ -630,13 +658,18 @@ const Containers: React.FC<{}> = () => {
                   onChange={(v: string) => setSelectedExportState(v)}
                   options={EXPORT_STATE_OPTIONS}
                   style={{ width: 200 }} />
-                <Button
-                  type='primary'
-                  icon={<ExportOutlined />}
-                  loading={exportSubmitting}
-                  onClick={handleSubmitExport}>
-                  Export CSV
-                </Button>
+                <Tooltip title={isStateAlreadyActive
+                  ? `A ${selectedExportState} export is already queued or running`
+                  : ''}>
+                  <Button
+                    type='primary'
+                    icon={<ExportOutlined />}
+                    loading={exportSubmitting}
+                    disabled={isStateAlreadyActive}
+                    onClick={handleSubmitExport}>
+                    Export CSV
+                  </Button>
+                </Tooltip>
               </div>
 
               {/* Active Exports */}
