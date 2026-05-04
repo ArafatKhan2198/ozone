@@ -18,6 +18,7 @@
 package org.apache.hadoop.ozone.recon.api.types;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.nio.file.Paths;
 
 /**
  * Represents an asynchronous CSV export job.
@@ -34,17 +35,9 @@ public class ExportJob {
   @JsonProperty("jobId")
   private String jobId;
   
-  @JsonProperty("userId")
-  private String userId;
-  
   @JsonProperty("state")
   private String state;
-  
-  @JsonProperty("limit")
-  private int limit;
-  
-  @JsonProperty("prevKey")
-  private long prevKey;
+
   
   @JsonProperty("status")
   private JobStatus status;
@@ -64,8 +57,11 @@ public class ExportJob {
   @JsonProperty("estimatedTotal")
   private long estimatedTotal;
   
-  @JsonProperty("filePath")
+  // Full path is kept internally for file I/O; only the filename is exposed via JSON
   private String filePath;
+
+  @JsonProperty("fileName")
+  private String fileName;
   
   @JsonProperty("errorMessage")
   private String errorMessage;
@@ -76,12 +72,9 @@ public class ExportJob {
   @JsonProperty("queuePosition")
   private int queuePosition;
 
-  public ExportJob(String jobId, String userId, String state, int limit, long prevKey) {
+  public ExportJob(String jobId, String state) {
     this.jobId = jobId;
-    this.userId = userId;
     this.state = state;
-    this.limit = limit;
-    this.prevKey = prevKey;
     this.status = JobStatus.QUEUED;
     this.submittedAt = System.currentTimeMillis();
     this.totalRecords = 0;
@@ -92,20 +85,8 @@ public class ExportJob {
     return jobId;
   }
 
-  public String getUserId() {
-    return userId;
-  }
-
   public String getState() {
     return state;
-  }
-
-  public int getLimit() {
-    return limit;
-  }
-
-  public long getPrevKey() {
-    return prevKey;
   }
 
   public JobStatus getStatus() {
@@ -159,6 +140,13 @@ public class ExportJob {
 
   public void setFilePath(String filePath) {
     this.filePath = filePath;
+    this.fileName = filePath != null
+        ? Paths.get(filePath).getFileName().toString()
+        : null;
+  }
+
+  public String getFileName() {
+    return fileName;
   }
 
   public String getErrorMessage() {

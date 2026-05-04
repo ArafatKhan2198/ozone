@@ -30,7 +30,7 @@ import {
   Tabs,
   Tooltip,
 } from "antd";
-import { DownloadOutlined, ExportOutlined } from "@ant-design/icons";
+import { DeleteOutlined, DownloadOutlined, ExportOutlined } from "@ant-design/icons";
 import { ValueType } from "react-select/src/types";
 import { ColumnsType } from "antd/es/table";
 
@@ -217,7 +217,7 @@ const Containers: React.FC<{}> = () => {
     setExportSubmitting(true);
     try {
       const response = await fetch(
-        `/api/v1/containers/unhealthy/export?state=${selectedExportState}&userId=webui`,
+        `/api/v1/containers/unhealthy/export?state=${selectedExportState}`,
         { method: 'POST' }
       );
       if (!response.ok) {
@@ -245,14 +245,22 @@ const Containers: React.FC<{}> = () => {
   };
 
   // ── Download helper ───────────────────────────────────────────────────────
-  const downloadFile = (jobId: string, filePath: string) => {
-    const filename = filePath ? filePath.split('/').pop() : `${jobId}.tar`;
+  const downloadFile = (jobId: string) => {
     const link = document.createElement('a');
     link.href = `/api/v1/containers/unhealthy/export/${jobId}/download`;
-    link.download = filename ?? `${jobId}.tar`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  // ── Delete job helper ─────────────────────────────────────────────────────
+  const deleteJob = async (jobId: string) => {
+    try {
+      await fetch(`/api/v1/containers/unhealthy/export/${jobId}`, { method: 'DELETE' });
+      fetchExportJobs();
+    } catch (err: any) {
+      message.error({ content: `Delete failed: ${err.message || err}`, duration: 4 });
+    }
   };
 
   // ── Container data fetching ───────────────────────────────────────────────
@@ -514,25 +522,39 @@ const Containers: React.FC<{}> = () => {
       title: 'Action',
       key: 'action',
       render: (_: unknown, record: ExportJob) => {
-        if (record.status === 'COMPLETED' && record.filePath) {
-          const filename = record.filePath.split('/').pop() ?? `${record.jobId}.tar`;
+        const deleteBtn = (
+          <Button
+            danger
+            size='small'
+            icon={<DeleteOutlined />}
+            onClick={() => deleteJob(record.jobId)}>
+            Delete
+          </Button>
+        );
+        if (record.status === 'COMPLETED') {
           return (
-            <Button
-              type='primary'
-              size='small'
-              icon={<DownloadOutlined />}
-              onClick={() => downloadFile(record.jobId, record.filePath)}>
-              {filename}
-            </Button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button
+                type='primary'
+                size='small'
+                icon={<DownloadOutlined />}
+                onClick={() => downloadFile(record.jobId)}>
+                Download
+              </Button>
+              {deleteBtn}
+            </div>
           );
         }
         if (record.status === 'FAILED') {
           return (
-            <Tooltip title={record.errorMessage ?? 'Unknown error'}>
-              <span style={{ color: '#ff4d4f', fontSize: 12 }}>
-                {record.errorMessage ?? 'Failed'}
-              </span>
-            </Tooltip>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Tooltip title={record.errorMessage ?? 'Unknown error'}>
+                <span style={{ color: '#ff4d4f', fontSize: 12, alignSelf: 'center' }}>
+                  {record.errorMessage ?? 'Failed'}
+                </span>
+              </Tooltip>
+              {deleteBtn}
+            </div>
           );
         }
         return null;

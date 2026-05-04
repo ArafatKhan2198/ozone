@@ -536,15 +536,12 @@ public class ContainerEndpoint {
    * Returns immediately with a job ID that the client can poll.
    *
    * @param state The container state (required: MISSING, UNDER_REPLICATED, etc.)
-   * @param userId User ID for rate limiting (defaults to "anonymous")
    * @return Response containing ExportJob with jobId
    */
   @POST
   @Path("/unhealthy/export")
   @Produces(MediaType.APPLICATION_JSON)
-  public Response startExport(
-      @QueryParam("state") String state,
-      @DefaultValue("anonymous") @QueryParam("userId") String userId) {
+  public Response startExport(@QueryParam("state") String state) {
 
     if (StringUtils.isEmpty(state)) {
       throw new WebApplicationException("state query parameter is required",
@@ -559,7 +556,7 @@ public class ContainerEndpoint {
     }
 
     try {
-      String jobId = exportJobManager.submitJob(userId, state, -1, 0);
+      String jobId = exportJobManager.submitJob(state);
       ExportJob job = exportJobManager.getJob(jobId);
       return Response.ok(job).build();
     } catch (IllegalStateException e) {

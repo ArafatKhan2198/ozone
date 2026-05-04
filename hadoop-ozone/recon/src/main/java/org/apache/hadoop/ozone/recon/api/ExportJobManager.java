@@ -29,7 +29,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,9 +39,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.PreDestroy;
+import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.utils.Archiver;
 import org.apache.hadoop.ozone.recon.ReconServerConfigKeys;
+import org.apache.hadoop.ozone.recon.ReconUtils;
 import org.apache.hadoop.ozone.recon.api.types.ExportJob;
 import org.apache.hadoop.ozone.recon.api.types.ExportJob.JobStatus;
 import org.apache.hadoop.ozone.recon.persistence.ContainerHealthSchemaManager;
@@ -74,11 +75,18 @@ public class ExportJobManager {
     
     // Use single thread executor for sequential processing (no concurrent DB access)
     this.workerPool = Executors.newSingleThreadExecutor();
-    
-    this.exportDirectory = conf.get(
-        ReconServerConfigKeys.OZONE_RECON_EXPORT_DIRECTORY,
+
+    // Resolve export directory: use configured value if set, otherwise fall back to
+    // {ozone.recon.db.dir}/exports so exports survive OS restarts alongside Recon data
+    String configuredDir = conf.get(ReconServerConfigKeys.OZONE_RECON_EXPORT_DIRECTORY,
         ReconServerConfigKeys.OZONE_RECON_EXPORT_DIRECTORY_DEFAULT);
-    
+    if (configuredDir == null || configuredDir.isEmpty()) {
+      File reconDbDir = new ReconUtils().getReconDbDir(
+          conf, ReconServerConfigKeys.OZONE_RECON_DB_DIR);
+      configuredDir = new File(reconDbDir, "exports").getAbsolutePath();
+    }
+    this.exportDirectory = configuredDir;
+
     // Create export directory if it doesn't exist
     try {
       Files.createDirectories(Paths.get(exportDirectory));
@@ -89,7 +97,7 @@ public class ExportJobManager {
     LOG.info("ExportJobManager initialized with single-threaded queue (max {} jobs)", MAX_QUEUE_SIZE);
   }
 
-  public synchronized String submitJob(String userId, String state, int limit, long prevKey) {
+  public synchronized String submitJob(String state) {
     // Reject duplicate: same state already queued or running
     boolean stateAlreadyActive = jobQueue.values().stream().anyMatch(j -> j.getState().equals(state)) ||
         jobTracker.values().stream().anyMatch(j -> j.getState().equals(state) && j.getStatus() == JobStatus.RUNNING);
@@ -107,15 +115,14 @@ public class ExportJobManager {
     }
     
     String jobId = UUID.randomUUID().toString();
-    ExportJob job = new ExportJob(jobId, userId, state, limit, prevKey);
-    // Filename format: export_{state}_{userId}_{shortJobId}.tar
-    String shortJobId = jobId.substring(0, 8);
-    String filePath = exportDirectory + "/export_" + state.toLowerCase() + "_" + userId + "_" + shortJobId + ".tar";
+    ExportJob job = new ExportJob(jobId, state);
+    // Filename: export_{state}_{epochMs}.tar — human-readable and time-sortable
+    String filePath = exportDirectory + "/export_" + state.toLowerCase()
+        + "_" + System.currentTimeMillis() + ".tar";
     job.setFilePath(filePath);
     
     jobTracker.put(jobId, job);
-    
-    // Add to queue (LinkedHashMap maintains insertion order)
+
     synchronized (jobQueue) {
       jobQueue.put(jobId, job);
     }
@@ -125,9 +132,8 @@ public class ExportJobManager {
     runningTasks.put(jobId, future);
     
     int queuePosition = getQueuePosition(jobId);
-    LOG.info("Submitted export job {} for user {} (state={}, limit={}, queue position={})",
-        jobId, userId, state, limit, queuePosition);
-    
+    LOG.info("Submitted export job {} (state={}, queue position={})", jobId, state, queuePosition);
+
     return jobId;
   }
 
@@ -163,35 +169,39 @@ public class ExportJobManager {
     }
   }
 
+  /**
+   * cancelJob is a unified cleanup method
+   * Cancel a QUEUED or RUNNING job, or delete a COMPLETED/FAILED job and its TAR file.
+   * Removes the job from the tracker in all cases.
+   */
   public void cancelJob(String jobId) {
     ExportJob job = jobTracker.get(jobId);
     if (job == null) {
       throw new IllegalStateException("Job not found: " + jobId);
     }
-    
-    if (job.getStatus() == JobStatus.COMPLETED || job.getStatus() == JobStatus.FAILED) {
-      throw new IllegalStateException("Job already completed or failed");
+
+    if (job.getStatus() == JobStatus.QUEUED || job.getStatus() == JobStatus.RUNNING) {
+      // Remove from queue if still waiting
+      synchronized (jobQueue) {
+        jobQueue.remove(jobId);
+      }
+      Future<?> future = runningTasks.remove(jobId);
+      if (future != null) {
+        future.cancel(true);
+      }
+      job.setStatus(JobStatus.FAILED);
+      job.setErrorMessage("Cancelled by user");
+      // Clean up any partial temp directory
+      FileUtils.deleteQuietly(new File(exportDirectory + "/" + jobId));
     }
-    
-    // Remove from queue if still queued
-    synchronized (jobQueue) {
-      jobQueue.remove(jobId);
+
+    // For any status: delete the TAR file and remove job from memory
+    if (job.getFilePath() != null) {
+      FileUtils.deleteQuietly(new File(job.getFilePath()));
     }
-    
-    Future<?> future = runningTasks.get(jobId);
-    if (future != null) {
-      future.cancel(true);
-      runningTasks.remove(jobId);
-    }
-    
-    job.setStatus(JobStatus.FAILED);
-    job.setErrorMessage("Cancelled by user");
-    
-    // Delete partial files/directory
-    deleteDirectory(Paths.get(exportDirectory + "/" + jobId));
-    deleteFileQuietly(job.getFilePath());
-    
-    LOG.info("Cancelled export job {}", jobId);
+    jobTracker.remove(jobId);
+
+    LOG.info("Deleted export job {} file={} (was {})", jobId, job.getFileName(), job.getStatus());
   }
 
   private void executeExport(ExportJob job) {
@@ -214,20 +224,18 @@ public class ExportJobManager {
           ContainerSchemaDefinition.UnHealthyContainerStates.valueOf(job.getState());
       
       // Get total count first for progress tracking
-      long estimatedTotal = containerHealthSchemaManager.getUnhealthyContainersCount(
-          internalState, job.getLimit(), job.getPrevKey());
+      long estimatedTotal = containerHealthSchemaManager.getUnhealthyContainersCount(internalState, -1, 0);
       job.setEstimatedTotal(estimatedTotal);
       LOG.info("Export job {} will process approximately {} records", job.getJobId(), estimatedTotal);
-      
-      // Open database cursor
+
+      // Open database cursor (-1 = unlimited, 0 = no prevKey offset)
       try (Cursor<UnhealthyContainersRecord> cursor =
-               containerHealthSchemaManager.getUnhealthyContainersCursor(
-                   internalState, job.getLimit(), job.getPrevKey())) {
+               containerHealthSchemaManager.getUnhealthyContainersCursor(internalState, -1, 0)) {
         
         int fileIndex = 1;
         long totalRecords = 0;
         long recordsInCurrentFile = 0;
-        final int CHUNK_SIZE = 500_000;
+        final int RECORDS_PER_FILE = 500_000;
         
         BufferedWriter writer = null;
         FileOutputStream fos = null;
@@ -274,8 +282,8 @@ public class ExportJobManager {
             recordsInCurrentFile++;
             job.setTotalRecords(totalRecords);
             
-            // Move to next file if chunk limit reached
-            if (recordsInCurrentFile >= CHUNK_SIZE) {
+            // Move to next file if per-file record limit reached
+            if (recordsInCurrentFile >= RECORDS_PER_FILE) {
               writer.flush();
               writer.close();
               writer = null;
@@ -314,7 +322,7 @@ public class ExportJobManager {
         LOG.info("Created TAR archive: {}", tarFilePath);
         
         // Delete CSV files and job directory
-        deleteDirectory(jobDir);
+        FileUtils.deleteDirectory(jobDir.toFile());
         LOG.info("Deleted temporary CSV files for job {}", job.getJobId());
         
         // Update job with TAR file path
@@ -325,8 +333,8 @@ public class ExportJobManager {
       } catch (InterruptedException e) {
         job.setStatus(JobStatus.FAILED);
         job.setErrorMessage("Job was cancelled");
-        deleteDirectory(jobDir);
-        deleteFileQuietly(tarFilePath);
+        FileUtils.deleteQuietly(jobDir.toFile());
+        FileUtils.deleteQuietly(new File(tarFilePath));
         LOG.info("Export job {} was cancelled", job.getJobId());
         Thread.currentThread().interrupt();
       }
@@ -334,8 +342,8 @@ public class ExportJobManager {
     } catch (Exception e) {
       job.setStatus(JobStatus.FAILED);
       job.setErrorMessage(e.getMessage());
-      deleteDirectory(jobDir);
-      deleteFileQuietly(tarFilePath);
+      FileUtils.deleteQuietly(new File(exportDirectory + "/" + job.getJobId()));
+      FileUtils.deleteQuietly(new File(tarFilePath));
       LOG.error("Export job {} failed", job.getJobId(), e);
     } finally {
       // 3-second cooldown before the next queued job is picked up by the single worker thread.
@@ -348,27 +356,6 @@ public class ExportJobManager {
     }
   }
   
-  private void deleteDirectory(Path directory) {
-    try {
-      if (Files.exists(directory)) {
-        Files.walk(directory)
-            .sorted(Comparator.reverseOrder())
-            .map(Path::toFile)
-            .forEach(File::delete);
-      }
-    } catch (IOException e) {
-      LOG.warn("Failed to delete directory: {}", directory, e);
-    }
-  }
-  
-  private void deleteFileQuietly(String filePath) {
-    try {
-      Files.deleteIfExists(Paths.get(filePath));
-    } catch (IOException e) {
-      LOG.warn("Failed to delete file: {}", filePath, e);
-    }
-  }
-
   @PreDestroy
   public void shutdown() {
     LOG.info("Shutting down ExportJobManager");

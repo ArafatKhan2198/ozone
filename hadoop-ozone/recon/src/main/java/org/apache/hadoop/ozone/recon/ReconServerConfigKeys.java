@@ -285,7 +285,10 @@ public final class  ReconServerConfigKeys {
    */
   public static final String OZONE_RECON_EXPORT_DIRECTORY =
       "ozone.recon.export.directory";
-  public static final String OZONE_RECON_EXPORT_DIRECTORY_DEFAULT = "/tmp/recon/exports";
+
+  // Default is resolved at runtime as {ozone.recon.db.dir}/exports.
+  // Empty string signals ExportJobManager to compute the path dynamically.
+  public static final String OZONE_RECON_EXPORT_DIRECTORY_DEFAULT = "";
 
   /**
    * Private constructor for utility class.
