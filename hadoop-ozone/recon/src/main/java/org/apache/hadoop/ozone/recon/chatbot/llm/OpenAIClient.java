@@ -25,9 +25,13 @@ import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.ozone.recon.chatbot.ChatbotConfigKeys;
 import org.apache.hadoop.ozone.recon.chatbot.security.CredentialHelper;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Direct client for OpenAI models (GPT-4, GPT-4o, o1, o3, etc.).
@@ -36,6 +40,19 @@ import java.util.Map;
 public class OpenAIClient implements LLMClient {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
+
+  /**
+   * Parameters that are valid in the OpenAI Chat Completions request body.
+   * Anything not on this list (e.g. our internal "provider" routing hint, or
+   * unknown future fields) is dropped before the request is sent so the API
+   * doesn't reject us with "unrecognized field" in strict mode.
+   */
+  private static final Set<String> ALLOWED_BODY_PARAMS = Collections.unmodifiableSet(
+      new HashSet<>(Arrays.asList(
+          "temperature", "max_tokens", "top_p", "n", "stream", "stop",
+          "presence_penalty", "frequency_penalty", "logit_bias", "user",
+          "response_format", "seed")));
+
   private final OzoneConfiguration configuration;
   private final CredentialHelper credentialHelper;
   private final LLMNetworkClient networkClient;
@@ -110,6 +127,11 @@ public class OpenAIClient implements LLMClient {
 
     if (params != null) {
       for (Map.Entry<String, Object> e : params.entrySet()) {
+        // Only forward parameters that OpenAI actually accepts. Internal
+        // routing hints (e.g. "provider") MUST NOT leak into the upstream body.
+        if (!ALLOWED_BODY_PARAMS.contains(e.getKey())) {
+          continue;
+        }
         Object v = e.getValue();
         if (v instanceof Integer) body.put(e.getKey(), (Integer) v);
         else if (v instanceof Double) body.put(e.getKey(), (Double) v);

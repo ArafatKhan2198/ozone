@@ -81,6 +81,14 @@ public final class ChatbotConfigKeys {
   public static final String OZONE_RECON_CHATBOT_ANTHROPIC_MODELS = OZONE_RECON_CHATBOT_PREFIX + "anthropic.models";
   public static final String OZONE_RECON_CHATBOT_ANTHROPIC_MODELS_DEFAULT = "claude-opus-4-6,claude-sonnet-4-6";
 
+  /**
+   * Anthropic beta feature header. Controls features like the 1M-token
+   * context window. Set to empty string to disable the beta header entirely.
+   * Anthropic rotates these strings; admins can override without a rebuild.
+   */
+  public static final String OZONE_RECON_CHATBOT_ANTHROPIC_BETA = OZONE_RECON_CHATBOT_PREFIX + "anthropic.beta";
+  public static final String OZONE_RECON_CHATBOT_ANTHROPIC_BETA_DEFAULT = "context-1m-2025-08-07";
+
   // ── Model prefix → provider mapping for fallback resolution ─
   // Format: "prefix1:provider1,prefix2:provider2"
   // Used when user provides a bare model name (no "provider:" prefix)
@@ -108,4 +116,37 @@ public final class ChatbotConfigKeys {
   // ── Agent configuration ─────────────────────────────────────
   public static final String OZONE_RECON_CHATBOT_MAX_TOOL_CALLS = OZONE_RECON_CHATBOT_PREFIX + "max.tool.calls";
   public static final int OZONE_RECON_CHATBOT_MAX_TOOL_CALLS_DEFAULT = 5;
+
+  // ── Tool (Recon API) HTTP timeouts ──────────────────────────
+  // Tunable for large clusters where slow Recon endpoints (e.g. listKeys with
+  // millions of records) would otherwise hit the previous hardcoded 30s ceiling.
+  public static final String OZONE_RECON_CHATBOT_TOOL_CONNECT_TIMEOUT_MS =
+      OZONE_RECON_CHATBOT_PREFIX + "tool.connect.timeout.ms";
+  public static final int OZONE_RECON_CHATBOT_TOOL_CONNECT_TIMEOUT_MS_DEFAULT = 30_000;
+
+  public static final String OZONE_RECON_CHATBOT_TOOL_READ_TIMEOUT_MS =
+      OZONE_RECON_CHATBOT_PREFIX + "tool.read.timeout.ms";
+  public static final int OZONE_RECON_CHATBOT_TOOL_READ_TIMEOUT_MS_DEFAULT = 60_000;
+
+  // ── Concurrency / resource isolation ────────────────────────
+  // The chatbot has its own bounded executor so a few slow LLM calls can't
+  // exhaust Jetty's main thread pool and starve the rest of the Recon UI.
+  // When all worker slots AND the queue are full, new requests fail fast
+  // with HTTP 503 instead of piling onto Jetty threads.
+  public static final String OZONE_RECON_CHATBOT_THREAD_POOL_SIZE =
+      OZONE_RECON_CHATBOT_PREFIX + "thread.pool.size";
+  public static final int OZONE_RECON_CHATBOT_THREAD_POOL_SIZE_DEFAULT = 4;
+
+  public static final String OZONE_RECON_CHATBOT_QUEUE_CAPACITY =
+      OZONE_RECON_CHATBOT_PREFIX + "queue.capacity";
+  public static final int OZONE_RECON_CHATBOT_QUEUE_CAPACITY_DEFAULT = 8;
+
+  /**
+   * Hard ceiling on a single chatbot request's end-to-end duration. Caps the
+   * worst case (tool selection LLM + multiple Recon API calls + summarization
+   * LLM) so a Jetty thread can't be blocked indefinitely.
+   */
+  public static final String OZONE_RECON_CHATBOT_REQUEST_TIMEOUT_MS =
+      OZONE_RECON_CHATBOT_PREFIX + "request.timeout.ms";
+  public static final int OZONE_RECON_CHATBOT_REQUEST_TIMEOUT_MS_DEFAULT = 420_000; // 7 minutes
 }

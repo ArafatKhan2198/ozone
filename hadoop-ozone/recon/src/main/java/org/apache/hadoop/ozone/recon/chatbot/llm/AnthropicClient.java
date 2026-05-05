@@ -36,7 +36,6 @@ public class AnthropicClient implements LLMClient {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final String ANTHROPIC_VERSION = "2023-06-01";
-  private static final String ANTHROPIC_BETA_CONTEXT = "context-1m-2025-08-07";
 
   private final OzoneConfiguration configuration;
   private final CredentialHelper credentialHelper;
@@ -100,7 +99,14 @@ public class AnthropicClient implements LLMClient {
     Map<String, String> headers = new HashMap<>();
     headers.put("x-api-key", resolvedKey);
     headers.put("anthropic-version", ANTHROPIC_VERSION);
-    headers.put("anthropic-beta", ANTHROPIC_BETA_CONTEXT);
+    // Beta header is admin-configurable. Anthropic rotates these strings; an
+    // empty value disables the beta entirely so a stale default can't break us.
+    String betaHeader = configuration.get(
+        ChatbotConfigKeys.OZONE_RECON_CHATBOT_ANTHROPIC_BETA,
+        ChatbotConfigKeys.OZONE_RECON_CHATBOT_ANTHROPIC_BETA_DEFAULT);
+    if (betaHeader != null && !betaHeader.isEmpty()) {
+      headers.put("anthropic-beta", betaHeader);
+    }
 
     try {
       String responseBody = networkClient.executePost(url, headers, MAPPER.writeValueAsString(body), "anthropic");

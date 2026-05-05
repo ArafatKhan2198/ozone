@@ -36,6 +36,15 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * REST API endpoint for the Recon Chatbot.
@@ -55,6 +64,11 @@ public class ChatbotEndpoint {
   private final LLMClient llmClient;
   private final OzoneConfiguration configuration;
 
+  // Bounded executor isolates chatbot work from Jetty's main thread pool.
+  // Daemon threads → no explicit shutdown needed; they die with the JVM.
+  private final ThreadPoolExecutor chatbotExecutor;
+  private final long requestTimeoutMs;
+
   @Inject
   public ChatbotEndpoint(ChatbotAgent chatbotAgent,
       LLMClient llmClient,
@@ -63,7 +77,35 @@ public class ChatbotEndpoint {
     this.llmClient = llmClient;
     this.configuration = configuration;
 
-    LOG.info("ChatbotEndpoint initialized via Guice injection");
+    int poolSize = configuration.getInt(
+        ChatbotConfigKeys.OZONE_RECON_CHATBOT_THREAD_POOL_SIZE,
+        ChatbotConfigKeys.OZONE_RECON_CHATBOT_THREAD_POOL_SIZE_DEFAULT);
+    int queueCapacity = configuration.getInt(
+        ChatbotConfigKeys.OZONE_RECON_CHATBOT_QUEUE_CAPACITY,
+        ChatbotConfigKeys.OZONE_RECON_CHATBOT_QUEUE_CAPACITY_DEFAULT);
+    this.requestTimeoutMs = configuration.getInt(
+        ChatbotConfigKeys.OZONE_RECON_CHATBOT_REQUEST_TIMEOUT_MS,
+        ChatbotConfigKeys.OZONE_RECON_CHATBOT_REQUEST_TIMEOUT_MS_DEFAULT);
+
+    // Fixed-size pool + bounded queue + AbortPolicy.
+    // When pool is busy AND queue is full → new submissions throw
+    // RejectedExecutionException, which we map to HTTP 503. This is what
+    // protects the Jetty pool: chatbot saturation can never spill over.
+    AtomicInteger threadCounter = new AtomicInteger();
+    ThreadFactory threadFactory = r -> {
+      Thread t = new Thread(r, "recon-chatbot-" + threadCounter.incrementAndGet());
+      t.setDaemon(true);
+      return t;
+    };
+    this.chatbotExecutor = new ThreadPoolExecutor(
+        poolSize, poolSize,
+        0L, TimeUnit.MILLISECONDS,
+        new ArrayBlockingQueue<>(queueCapacity),
+        threadFactory,
+        new ThreadPoolExecutor.AbortPolicy());
+
+    LOG.info("ChatbotEndpoint initialized: poolSize={}, queueCapacity={}, requestTimeoutMs={}",
+        poolSize, queueCapacity, requestTimeoutMs);
   }
 
   /**
@@ -111,31 +153,62 @@ public class ChatbotEndpoint {
           .build();
     }
 
-    try {
-      LOG.info("Chat request: userId={}, model={}, provider={}",
-          sanitizeUserId(request.getUserId()),
-          request.getModel() == null ? "default" : request.getModel(),
-          request.getProvider() == null ? "auto" : request.getProvider());
+    LOG.info("Chat request: userId={}, model={}, provider={}",
+        sanitizeUserId(request.getUserId()),
+        request.getModel() == null ? "default" : request.getModel(),
+        request.getProvider() == null ? "auto" : request.getProvider());
 
-      // Pass the user's question to the Brain (ChatbotAgent) to do all the hard work.
-      // This step takes a few seconds because it talks to Gemini and the Recon APIs.
-      String response = chatbotAgent.processQuery(
+    // Submit the heavy work (LLM calls + Recon API calls) to the chatbot's
+    // bounded executor instead of running it on the Jetty request thread.
+    // If the pool + queue are full, AbortPolicy throws immediately and we
+    // return 503 — Jetty pool stays free for the rest of Recon.
+    Future<String> future;
+    try {
+      future = chatbotExecutor.submit(() -> chatbotAgent.processQuery(
           request.getQuery(),
           request.getModel(),
           request.getProvider(),
-          null);
+          null));
+    } catch (RejectedExecutionException rej) {
+      LOG.warn("Chatbot is at capacity; rejecting request");
+      return Response.status(Response.Status.SERVICE_UNAVAILABLE)
+          .entity(Collections.singletonMap("error",
+              "Chatbot is busy. Please retry in a few moments."))
+          .build();
+    }
 
-      // Take the answer the ChatbotAgent gave us, format it into a Response object
+    try {
+      // Bounded wait: caps how long a Jetty thread can be parked on the future.
+      String response = future.get(requestTimeoutMs, TimeUnit.MILLISECONDS);
       ChatResponse chatResponse = new ChatResponse();
       chatResponse.setResponse(response);
       chatResponse.setSuccess(true);
-
       return Response.ok(chatResponse).build();
 
-    } catch (Exception e) {
-      LOG.error("Error processing chat request", e);
+    } catch (TimeoutException te) {
+      // Best-effort: signal the worker thread to stop (LLM/HTTP calls
+      // respect interrupts in their network/io layers).
+      future.cancel(true);
+      LOG.warn("Chatbot request timed out after {}ms", requestTimeoutMs);
+      return Response.status(Response.Status.SERVICE_UNAVAILABLE)
+          .entity(Collections.singletonMap("error",
+              "Chatbot request timed out after " + requestTimeoutMs + " ms."))
+          .build();
+
+    } catch (ExecutionException ee) {
+      // Unwrap so the client sees the real failure, not a plain ExecutionException.
+      Throwable cause = ee.getCause() == null ? ee : ee.getCause();
+      LOG.error("Error processing chat request", cause);
       return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-          .entity(Collections.singletonMap("error", e.getMessage()))
+          .entity(Collections.singletonMap("error", cause.getMessage()))
+          .build();
+
+    } catch (InterruptedException ie) {
+      future.cancel(true);
+      Thread.currentThread().interrupt();
+      LOG.warn("Chatbot request interrupted");
+      return Response.status(Response.Status.SERVICE_UNAVAILABLE)
+          .entity(Collections.singletonMap("error", "Request interrupted"))
           .build();
     }
   }
