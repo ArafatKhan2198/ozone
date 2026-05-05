@@ -404,12 +404,19 @@ public class ContainerHealthSchemaManager {
   }
 
   /**
-   * Get the total count of unhealthy containers for a given state.
+   * Returns the count of unhealthy containers matching the given state.
    *
-   * @param state The container health state to filter by
-   * @param limit Maximum number of records to count (-1 for unlimited)
-   * @param prevKey Container ID offset for cursor-based pagination
-   * @return Total count of matching containers
+   * <p>A full {@code SELECT COUNT(*)} is always executed against Derby.
+   * The {@code limit} parameter does not restrict the DB query — it only
+   * caps the returned value so the UI can display a bounded estimated total.</p>
+   *
+   * @param state   the container health state to filter by (required)
+   * @param limit   if greater than 0 and less than the real count, this value
+   *                is returned instead of the real count; pass -1 to always
+   *                return the actual count
+   * @param prevKey if greater than 0, only containers with
+   *                {@code container_id > prevKey} are included in the count
+   * @return the count of matching containers, capped at {@code limit} if applicable
    */
   public long getUnhealthyContainersCount(
       UnHealthyContainerStates state, int limit, long prevKey) {
