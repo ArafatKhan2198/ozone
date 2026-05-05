@@ -17,8 +17,10 @@
 
 package org.apache.hadoop.ozone.recon.api.types;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.nio.file.Paths;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Represents an asynchronous CSV export job.
@@ -75,8 +77,8 @@ public class ExportJob {
   // Internal — not serialized
   private int maxDownloads;
 
-  @JsonProperty("downloadCount")
-  private int downloadCount;
+  @JsonIgnore
+  private final AtomicInteger downloadCount = new AtomicInteger(0);
 
   public ExportJob(String jobId, String state, int maxDownloads) {
     this.jobId = jobId;
@@ -86,7 +88,6 @@ public class ExportJob {
     this.totalRecords = 0;
     this.estimatedTotal = -1;
     this.maxDownloads = maxDownloads;
-    this.downloadCount = 0;
   }
 
   public String getJobId() {
@@ -176,8 +177,9 @@ public class ExportJob {
     this.queuePosition = queuePosition;
   }
 
+  @JsonProperty("downloadCount")
   public int getDownloadCount() {
-    return downloadCount;
+    return downloadCount.get();
   }
 
   public int getMaxDownloads() {
@@ -186,14 +188,31 @@ public class ExportJob {
 
   @JsonProperty("downloadsRemaining")
   public int getDownloadsRemaining() {
-    return Math.max(0, maxDownloads - downloadCount);
+    return Math.max(0, maxDownloads - downloadCount.get());
   }
 
-  public synchronized boolean isDownloadAllowed() {
-    return downloadCount < maxDownloads;
+  /**
+   * Best-effort hint for UI; may be briefly stale vs {@link #tryReserveDownload()}.
+   */
+  public boolean isDownloadAllowed() {
+    return downloadCount.get() < maxDownloads;
   }
 
-  public synchronized void incrementDownloadCount() {
-    downloadCount++;
+  /**
+   * Atomically consumes one download slot if any remain. Use this from the
+   * download endpoint so concurrent requests cannot bypass {@code maxDownloads}.
+   *
+   * @return true if a slot was reserved, false if the limit was already reached
+   */
+  public boolean tryReserveDownload() {
+    while (true) {
+      int current = downloadCount.get();
+      if (current >= maxDownloads) {
+        return false;
+      }
+      if (downloadCount.compareAndSet(current, current + 1)) {
+        return true;
+      }
+    }
   }
 }

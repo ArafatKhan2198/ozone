@@ -613,7 +613,12 @@ public class ContainerEndpoint {
       throw new WebApplicationException("Job not completed yet", Response.Status.CONFLICT);
     }
 
-    if (!job.isDownloadAllowed()) {
+    File file = new File(job.getFilePath());
+    if (!file.exists()) {
+      throw new WebApplicationException("Export file not found", Response.Status.NOT_FOUND);
+    }
+
+    if (!job.tryReserveDownload()) {
       Map<String, String> errorResponse = new java.util.HashMap<>();
       errorResponse.put("error", "Download limit reached");
       errorResponse.put("message", "This export has reached its maximum download limit of "
@@ -624,12 +629,6 @@ public class ContainerEndpoint {
           .build();
     }
 
-    File file = new File(job.getFilePath());
-    if (!file.exists()) {
-      throw new WebApplicationException("Export file not found", Response.Status.NOT_FOUND);
-    }
-
-    job.incrementDownloadCount();
     LOG.info("Download {} of {} for job {}", job.getDownloadCount(), job.getMaxDownloads(), jobId);
 
     StreamingOutput stream = outputStream -> {

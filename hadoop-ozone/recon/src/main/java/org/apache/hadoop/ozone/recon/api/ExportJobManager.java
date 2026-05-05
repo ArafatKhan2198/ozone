@@ -126,45 +126,42 @@ public class ExportJobManager {
     LOG.info("ExportJobManager initialized with single-threaded queue (max {} jobs)", maxQueueSize);
   }
 
-  public synchronized String submitJob(String state) {
-    // Reject duplicate: same state already queued or running
-    boolean stateAlreadyExists = jobTracker.values().stream().anyMatch(
-        j -> j.getState().equals(state)
-            && (j.getStatus() == JobStatus.QUEUED
-                || j.getStatus() == JobStatus.RUNNING
-                || j.getStatus() == JobStatus.COMPLETED));
-    if (stateAlreadyExists) {
-      throw new IllegalStateException(
-          "An export for state " + state + " already exists. Please delete the existing export "
-              + "from the Completed Exports table before starting a new one.");
-    }
+  public String submitJob(String state) {
+    String jobId = UUID.randomUUID().toString();
+    ExportJob job = new ExportJob(jobId, state, maxDownloads);
+    String filePath = exportDirectory + "/export_" + state.toLowerCase()
+        + "_" + System.currentTimeMillis() + ".tar";
+    job.setFilePath(filePath);
 
-    // Check global queue size limit
+    int queuePosition;
+    // Single lock for all queue-related checks and mutations to avoid nested.
     synchronized (jobQueue) {
+      // Reject if a job for this state is already queued, running, or completed
+      boolean stateAlreadyExists = jobTracker.values().stream().anyMatch(
+          j -> j.getState().equals(state)
+              && (j.getStatus() == JobStatus.QUEUED
+                  || j.getStatus() == JobStatus.RUNNING
+                  || j.getStatus() == JobStatus.COMPLETED));
+      if (stateAlreadyExists) {
+        throw new IllegalStateException(
+            "An export for state " + state + " already exists. Please delete the existing export "
+                + "from the Completed Exports table before starting a new one.");
+      }
+
       if (jobQueue.size() >= maxQueueSize) {
         throw new IllegalStateException(
             "Export queue is full (max " + maxQueueSize + " jobs). Please try again later.");
       }
-    }
-    
-    String jobId = UUID.randomUUID().toString();
-    ExportJob job = new ExportJob(jobId, state, maxDownloads);
-    // Filename: export_{state}_{epochMs}.tar — human-readable and time-sortable
-    String filePath = exportDirectory + "/export_" + state.toLowerCase()
-        + "_" + System.currentTimeMillis() + ".tar";
-    job.setFilePath(filePath);
-    
-    jobTracker.put(jobId, job);
 
-    synchronized (jobQueue) {
+      jobTracker.put(jobId, job);
       jobQueue.put(jobId, job);
+      queuePosition = jobQueue.size();
     }
-    
-    // Submit to single-threaded worker pool
+
+    // Submit outside the lock — workerPool.submit is thread-safe on its own
     Future<?> future = workerPool.submit(() -> executeExport(job));
     runningTasks.put(jobId, future);
-    
-    int queuePosition = getQueuePosition(jobId);
+
     LOG.info("Submitted export job {} (state={}, queue position={})", jobId, state, queuePosition);
 
     return jobId;
@@ -291,7 +288,13 @@ public class ExportJobManager {
               String csvFileName = String.format("%s/unhealthy_containers_%s_part%03d.csv",
                   jobDirectory, job.getState().toLowerCase(), fileIndex);
               fos = new FileOutputStream(csvFileName);
-              writer = new BufferedWriter(new OutputStreamWriter(fos, StandardCharsets.UTF_8));
+              try {
+                writer = new BufferedWriter(new OutputStreamWriter(fos, StandardCharsets.UTF_8));
+              } finally {
+                if (writer == null) {
+                  fos.close();
+                }
+              }
               
               // Write CSV header
               writer.write("container_id,container_state,in_state_since," +

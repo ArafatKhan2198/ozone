@@ -40,10 +40,10 @@ class TestExportJob {
   }
 
   @Test
-  void incrementDownloadCount_decrementsRemaining() {
+  void tryReserveDownload_decrementsRemaining() {
     ExportJob job = new ExportJob("job-1", "MISSING", 3);
 
-    job.incrementDownloadCount();
+    assertThat(job.tryReserveDownload()).isTrue();
     assertThat(job.getDownloadCount()).isEqualTo(1);
     assertThat(job.getDownloadsRemaining()).isEqualTo(2);
     assertThat(job.isDownloadAllowed()).isTrue();
@@ -53,24 +53,26 @@ class TestExportJob {
   void downloadAllowed_falseAtLimit() {
     ExportJob job = new ExportJob("job-1", "MISSING", 3);
 
-    job.incrementDownloadCount();
-    job.incrementDownloadCount();
-    job.incrementDownloadCount();
+    assertThat(job.tryReserveDownload()).isTrue();
+    assertThat(job.tryReserveDownload()).isTrue();
+    assertThat(job.tryReserveDownload()).isTrue();
 
     assertThat(job.isDownloadAllowed()).isFalse();
     assertThat(job.getDownloadsRemaining()).isZero();
+    assertThat(job.tryReserveDownload()).isFalse();
   }
 
   @Test
   void downloadsRemaining_neverNegative() {
     ExportJob job = new ExportJob("job-1", "MISSING", 1);
 
-    job.incrementDownloadCount();
-    job.incrementDownloadCount();   // exceeds max
-    job.incrementDownloadCount();
+    assertThat(job.tryReserveDownload()).isTrue();
+    assertThat(job.tryReserveDownload()).isFalse();
+    assertThat(job.tryReserveDownload()).isFalse();
 
     assertThat(job.getDownloadsRemaining()).isZero();
     assertThat(job.isDownloadAllowed()).isFalse();
+    assertThat(job.getDownloadCount()).isEqualTo(1);
   }
 
   @Test
