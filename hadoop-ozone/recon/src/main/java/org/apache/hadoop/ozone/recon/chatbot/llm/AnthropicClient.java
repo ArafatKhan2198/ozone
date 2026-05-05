@@ -63,15 +63,25 @@ public class AnthropicClient implements LLMClient {
     ObjectNode body = MAPPER.createObjectNode();
     body.put("model", model);
 
+    // Anthropic accepts a single top-level "system" field. Concatenate all
+    // system messages so we don't silently overwrite earlier ones when the
+    // caller supplies more than one.
+    StringBuilder systemPrompt = new StringBuilder();
     ArrayNode messagesArray = body.putArray("messages");
     for (ChatMessage msg : messages) {
       if ("system".equals(msg.getRole())) {
-        body.put("system", msg.getContent());
+        if (systemPrompt.length() > 0) {
+          systemPrompt.append("\n\n");
+        }
+        systemPrompt.append(msg.getContent());
       } else {
         ObjectNode m = messagesArray.addObject();
         m.put("role", msg.getRole());
         m.put("content", msg.getContent());
       }
+    }
+    if (systemPrompt.length() > 0) {
+      body.put("system", systemPrompt.toString());
     }
 
     if (parameters != null) {

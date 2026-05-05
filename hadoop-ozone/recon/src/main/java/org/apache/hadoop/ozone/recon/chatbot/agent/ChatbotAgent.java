@@ -37,8 +37,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Main chatbot agent that orchestrates the conversation flow.
@@ -51,7 +49,6 @@ public class ChatbotAgent {
   private static final Logger LOG = LoggerFactory.getLogger(ChatbotAgent.class);
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
-  private static final Pattern JSON_PATTERN = Pattern.compile("\\{.*\\}", Pattern.DOTALL);
 
   // A specific Recon API endpoint we want to handle carefully because it can return millions of rows.
   private static final String LIST_KEYS_ENDPOINT_SUFFIX = "/keys/listKeys";
@@ -74,11 +71,6 @@ public class ChatbotAgent {
   private final int maxPagesPerAnswer;
   private final int pageSizePerCall;
   private final boolean requireSafeScope;
-
-  /**
-   * Set per-request by processQuery; used to inject provider hint.
-   */
-  private volatile String currentProvider;
 
   @Inject
   public ChatbotAgent(LLMClient llmClient,
@@ -137,20 +129,18 @@ public class ChatbotAgent {
     // Use default model if the user didn't specify one.
     String effectiveModel = (model != null && !model.isEmpty()) ? model : defaultModel;
 
-    // Store provider so private helper methods can inject it
-    // into LLM call parameters.
-    this.currentProvider = provider;
-
     LOG.info("Processing query with model: {}, provider: {}", effectiveModel, provider == null ? "auto" : provider);
 
     // STEP 1: Ask the LLM what API tools it wants to use to answer the question.
-    ToolCall toolCall = getToolCall(userQuery, effectiveModel, apiKey);
+    // NOTE: provider is passed as a method arg (NOT instance state) because
+    // ChatbotAgent is @Singleton — concurrent requests would race on a shared field.
+    ToolCall toolCall = getToolCall(userQuery, effectiveModel, provider, apiKey);
 
     // If the LLM doesn't know what API to call...
     if (toolCall == null) {
       // No suitable endpoint found
       LOG.info("Tool selection result: NO_SUITABLE_ENDPOINT; using fallback");
-      return handleFallback(userQuery, effectiveModel, apiKey);
+      return handleFallback(userQuery, effectiveModel, provider, apiKey);
     }
 
     // If the user asked a general question (e.g. "What is Ozone?"), the LLM answers it directly without an API call.
@@ -168,7 +158,7 @@ public class ChatbotAgent {
 
       if (toolCall.getToolCalls() == null || toolCall.getToolCalls().isEmpty()) {
         LOG.warn("LLM returned MULTI_ENDPOINT but no tool calls");
-        return handleFallback(userQuery, effectiveModel, apiKey);
+        return handleFallback(userQuery, effectiveModel, provider, apiKey);
       }
       LOG.info("Tool selection result: MULTI_ENDPOINT count={}",
           toolCall.getToolCalls().size());
@@ -195,7 +185,7 @@ public class ChatbotAgent {
     } else {
       if (toolCall.getEndpoint() == null || toolCall.getEndpoint().isEmpty()) {
         LOG.warn("LLM returned SINGLE_ENDPOINT with empty endpoint");
-        return handleFallback(userQuery, effectiveModel, apiKey);
+        return handleFallback(userQuery, effectiveModel, provider, apiKey);
       }
       LOG.info("Tool selection result: SINGLE_ENDPOINT method={}, endpoint={}, paramKeys={}, reasoning={}",
           toolCall.getMethod(),
@@ -227,13 +217,13 @@ public class ChatbotAgent {
     // STEP 3: Send the raw JSON data BACK to the LLM to format a nice answer
     LOG.info("Summarization input prepared: endpointCount={}, endpoints={}",
         apiResponses.size(), apiResponses.keySet());
-    return summarizeResponse(userQuery, apiResponses, executionMetadata, effectiveModel, apiKey);
+    return summarizeResponse(userQuery, apiResponses, executionMetadata, effectiveModel, provider, apiKey);
   }
 
   /**
    * "Step 1" Helper: Talks to the LLM and asks for a JSON object telling us which API to call.
    */
-  private ToolCall getToolCall(String userQuery, String model, String apiKey)
+  private ToolCall getToolCall(String userQuery, String model, String provider, String apiKey)
       throws Exception {
 
     // Build the "cheat sheet" prompt (includes the recon-api-guide.md)
@@ -248,8 +238,9 @@ public class ChatbotAgent {
     Map<String, Object> parameters = new HashMap<>();
     parameters.put("temperature", 0.1);
     parameters.put("max_tokens", 8192);
-    if (currentProvider != null && !currentProvider.isEmpty()) {
-      parameters.put("_provider", currentProvider);
+    // Key MUST match what LLMDispatcher.chatCompletion() reads ("provider").
+    if (provider != null && !provider.isEmpty()) {
+      parameters.put("provider", provider);
     }
 
     // Send the request to the LLM
@@ -267,17 +258,62 @@ public class ChatbotAgent {
       return null;
     }
 
-    // Extract JSON from response
-    Matcher matcher = JSON_PATTERN.matcher(content);
-    if (!matcher.find()) {
+    // Extract the first top-level JSON object from the response. We can't use
+    // a greedy regex like \{.*\} because LLMs sometimes emit multiple JSON
+    // fragments (reasoning + tool call), and a non-greedy regex breaks on
+    // nested objects. Walking the brace depth handles both cases correctly.
+    String jsonStr = extractFirstJsonObject(content);
+    if (jsonStr == null) {
       LOG.warn("No JSON found in LLM response");
       return null;
     }
 
-    // Convert the JSON string into our Java "ToolCall" object
-    String jsonStr = matcher.group();
     JsonNode jsonNode = MAPPER.readTree(jsonStr);
     return parseToolCall(jsonNode);
+  }
+
+  /**
+   * Extracts the first balanced top-level JSON object from a string by
+   * walking brace depth. Properly skips braces inside string literals and
+   * handles escape sequences. Returns null if no valid JSON object found.
+   */
+  static String extractFirstJsonObject(String content) {
+    if (content == null) {
+      return null;
+    }
+    int start = content.indexOf('{');
+    if (start < 0) {
+      return null;
+    }
+    int depth = 0;
+    boolean inString = false;
+    boolean escape = false;
+    for (int i = start; i < content.length(); i++) {
+      char c = content.charAt(i);
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (inString) {
+        if (c == '\\') {
+          escape = true;
+        } else if (c == '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (c == '"') {
+        inString = true;
+      } else if (c == '{') {
+        depth++;
+      } else if (c == '}') {
+        depth--;
+        if (depth == 0) {
+          return content.substring(start, i + 1);
+        }
+      }
+    }
+    return null;
   }
 
   /**
@@ -327,7 +363,7 @@ public class ChatbotAgent {
   private String summarizeResponse(String userQuery,
                                    Map<String, Object> apiResponses,
                                    Map<String, Object> executionMetadata,
-                                   String model, String apiKey)
+                                   String model, String provider, String apiKey)
       throws Exception {
 
     // Give the LLM a new set of rules
@@ -343,8 +379,8 @@ public class ChatbotAgent {
     Map<String, Object> parameters = new HashMap<>();
     parameters.put("temperature", 0.3);
     parameters.put("max_tokens", 2000);
-    if (currentProvider != null && !currentProvider.isEmpty()) {
-      parameters.put("_provider", currentProvider);
+    if (provider != null && !provider.isEmpty()) {
+      parameters.put("provider", provider);
     }
 
     // Send the request to the LLM
@@ -364,7 +400,7 @@ public class ChatbotAgent {
    * Helper: If the user asks "What is the meaning of life?", we use this to say
    * "Sorry, I only know about Hadoop."
    */
-  private String handleFallback(String userQuery, String model, String apiKey)
+  private String handleFallback(String userQuery, String model, String provider, String apiKey)
       throws Exception {
     String prompt = String.format(
         "The user asked: \"%s\"\n\n" +
@@ -385,8 +421,8 @@ public class ChatbotAgent {
     Map<String, Object> parameters = new HashMap<>();
     parameters.put("temperature", 0.5);
     parameters.put("max_tokens", 500);
-    if (currentProvider != null && !currentProvider.isEmpty()) {
-      parameters.put("_provider", currentProvider);
+    if (provider != null && !provider.isEmpty()) {
+      parameters.put("provider", provider);
     }
 
     LLMResponse response = llmClient.chatCompletion(
