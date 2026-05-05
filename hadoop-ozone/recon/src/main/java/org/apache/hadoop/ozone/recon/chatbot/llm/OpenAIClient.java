@@ -25,7 +25,6 @@ import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.ozone.recon.chatbot.ChatbotConfigKeys;
 import org.apache.hadoop.ozone.recon.chatbot.security.CredentialHelper;
 
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -81,7 +80,9 @@ public class OpenAIClient implements LLMClient {
 
   @Override
   public List<String> getSupportedModels() {
-    return Arrays.asList("gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano");
+    return GeminiClient.loadModelsFromConfig(configuration,
+        ChatbotConfigKeys.OZONE_RECON_CHATBOT_OPENAI_MODELS,
+        ChatbotConfigKeys.OZONE_RECON_CHATBOT_OPENAI_MODELS_DEFAULT);
   }
 
   private String resolveApiKey(String perRequestKey) {

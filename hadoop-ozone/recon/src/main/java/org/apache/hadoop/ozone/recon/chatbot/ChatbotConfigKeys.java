@@ -69,6 +69,27 @@ public final class ChatbotConfigKeys {
       + "anthropic.base.url";
   public static final String OZONE_RECON_CHATBOT_ANTHROPIC_BASE_URL_DEFAULT = "https://api.anthropic.com";
 
+  // ── Per-provider supported models (comma-separated) ─────────
+  // Allows admins to add new models (e.g. gpt-5, claude-opus-5) without code changes.
+  public static final String OZONE_RECON_CHATBOT_OPENAI_MODELS = OZONE_RECON_CHATBOT_PREFIX + "openai.models";
+  public static final String OZONE_RECON_CHATBOT_OPENAI_MODELS_DEFAULT = "gpt-4.1,gpt-4.1-mini,gpt-4.1-nano";
+
+  public static final String OZONE_RECON_CHATBOT_GEMINI_MODELS = OZONE_RECON_CHATBOT_PREFIX + "gemini.models";
+  public static final String OZONE_RECON_CHATBOT_GEMINI_MODELS_DEFAULT =
+      "gemini-2.5-pro,gemini-2.5-flash,gemini-3-flash-preview,gemini-3.1-pro-preview";
+
+  public static final String OZONE_RECON_CHATBOT_ANTHROPIC_MODELS = OZONE_RECON_CHATBOT_PREFIX + "anthropic.models";
+  public static final String OZONE_RECON_CHATBOT_ANTHROPIC_MODELS_DEFAULT = "claude-opus-4-6,claude-sonnet-4-6";
+
+  // ── Model prefix → provider mapping for fallback resolution ─
+  // Format: "prefix1:provider1,prefix2:provider2"
+  // Used when user provides a bare model name (no "provider:" prefix)
+  // to infer which provider should handle it.
+  public static final String OZONE_RECON_CHATBOT_MODEL_PREFIX_MAPPING =
+      OZONE_RECON_CHATBOT_PREFIX + "model.prefix.mapping";
+  public static final String OZONE_RECON_CHATBOT_MODEL_PREFIX_MAPPING_DEFAULT =
+      "gpt-:openai,o1:openai,o3:openai,gemini:gemini,claude:anthropic";
+
   // ── Execution policy ────────────────────────────────────────
   public static final String OZONE_RECON_CHATBOT_EXEC_MAX_RECORDS = OZONE_RECON_CHATBOT_PREFIX
       + "exec.max.records";

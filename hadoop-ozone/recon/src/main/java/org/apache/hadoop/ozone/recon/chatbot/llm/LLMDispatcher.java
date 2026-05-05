@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -42,6 +43,9 @@ public class LLMDispatcher implements LLMClient {
       LoggerFactory.getLogger(LLMDispatcher.class);
 
   private final Map<String, LLMClient> clients = new HashMap<>();
+  // LinkedHashMap preserves declaration order so prefix matching is deterministic
+  // (important when one prefix is a substring of another, e.g. "claude-3" vs "claude").
+  private final Map<String, String> modelPrefixMapping = new LinkedHashMap<>();
   private final OzoneConfiguration configuration;
 
   @Inject
@@ -58,7 +62,36 @@ public class LLMDispatcher implements LLMClient {
     clients.put("gemini", new GeminiClient(configuration, credentialHelper, timeoutMs));
     clients.put("anthropic", new AnthropicClient(configuration, credentialHelper, timeoutMs));
 
-    LOG.info("LLMDispatcher initialized with clients: {}", clients.keySet());
+    // Load model-prefix → provider mapping from config so admins can register
+    // new model families (e.g. "o4:openai", "gemma:gemini") without code changes.
+    loadModelPrefixMapping();
+
+    LOG.info("LLMDispatcher initialized with clients: {}, prefix mapping: {}",
+        clients.keySet(), modelPrefixMapping);
+  }
+
+  private void loadModelPrefixMapping() {
+    String raw = configuration.get(
+        ChatbotConfigKeys.OZONE_RECON_CHATBOT_MODEL_PREFIX_MAPPING,
+        ChatbotConfigKeys.OZONE_RECON_CHATBOT_MODEL_PREFIX_MAPPING_DEFAULT);
+    for (String entry : raw.split(",")) {
+      String trimmed = entry.trim();
+      if (trimmed.isEmpty()) {
+        continue;
+      }
+      int colon = trimmed.indexOf(':');
+      if (colon <= 0 || colon == trimmed.length() - 1) {
+        LOG.warn("Skipping malformed model prefix mapping entry: '{}' (expected 'prefix:provider')", trimmed);
+        continue;
+      }
+      String prefix = trimmed.substring(0, colon).toLowerCase();
+      String provider = trimmed.substring(colon + 1).toLowerCase();
+      if (!clients.containsKey(provider)) {
+        LOG.warn("Skipping prefix '{}': provider '{}' is not registered", prefix, provider);
+        continue;
+      }
+      modelPrefixMapping.put(prefix, provider);
+    }
   }
 
   /**
@@ -78,16 +111,14 @@ public class LLMDispatcher implements LLMClient {
           return clients.get(prefix);
         }
       }
-      
+
+      // Fallback: match the bare model name against the configured prefix
+      // mapping (no hardcoded prefixes — fully driven by config).
       String m = requestModel.toLowerCase();
-      if (m.startsWith("gpt-") || m.startsWith("o1") || m.startsWith("o3")) {
-        return clients.get("openai");
-      }
-      if (m.startsWith("gemini")) {
-        return clients.get("gemini");
-      }
-      if (m.startsWith("claude")) {
-        return clients.get("anthropic");
+      for (Map.Entry<String, String> mapping : modelPrefixMapping.entrySet()) {
+        if (m.startsWith(mapping.getKey())) {
+          return clients.get(mapping.getValue());
+        }
       }
     }
 

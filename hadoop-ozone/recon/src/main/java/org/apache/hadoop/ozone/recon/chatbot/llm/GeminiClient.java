@@ -25,7 +25,6 @@ import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.ozone.recon.chatbot.ChatbotConfigKeys;
 import org.apache.hadoop.ozone.recon.chatbot.security.CredentialHelper;
 
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,7 +54,12 @@ public class GeminiClient implements LLMClient {
       throw new LLMException("No API key configured for provider 'gemini'.");
     }
 
-    String url = getBaseUrl() + "/v1beta/models/" + model + ":generateContent?key=" + resolvedKey;
+    // Pass the API key in the x-goog-api-key header instead of as a URL query
+    // parameter. URLs leak into access logs, proxies, monitoring tools and
+    // browser history — headers don't. Google officially supports both forms.
+    String url = getBaseUrl() + "/v1beta/models/" + model + ":generateContent";
+    Map<String, String> headers = new HashMap<>();
+    headers.put("x-goog-api-key", resolvedKey);
 
     ObjectNode body = MAPPER.createObjectNode();
     ArrayNode contents = body.putArray("contents");
@@ -85,7 +89,7 @@ public class GeminiClient implements LLMClient {
     }
 
     try {
-      String responseBody = networkClient.executePost(url, null, MAPPER.writeValueAsString(body), "gemini");
+      String responseBody = networkClient.executePost(url, headers, MAPPER.writeValueAsString(body), "gemini");
       return parseGeminiResponse(responseBody, model);
     } catch (Exception e) {
       if (e instanceof LLMException) {
@@ -103,7 +107,26 @@ public class GeminiClient implements LLMClient {
 
   @Override
   public List<String> getSupportedModels() {
-    return Arrays.asList("gemini-2.5-pro", "gemini-2.5-flash", "gemini-3-flash-preview", "gemini-3.1-pro-preview");
+    return loadModelsFromConfig(configuration,
+        ChatbotConfigKeys.OZONE_RECON_CHATBOT_GEMINI_MODELS,
+        ChatbotConfigKeys.OZONE_RECON_CHATBOT_GEMINI_MODELS_DEFAULT);
+  }
+
+  /**
+   * Load comma-separated models from config; falls back to the supplied default
+   * if the key is unset. Trims whitespace and ignores empty entries.
+   */
+  static List<String> loadModelsFromConfig(OzoneConfiguration conf, String key, String defaultValue) {
+    String raw = conf.get(key, defaultValue);
+    String[] parts = raw.split(",");
+    List<String> models = new java.util.ArrayList<>(parts.length);
+    for (String p : parts) {
+      String trimmed = p.trim();
+      if (!trimmed.isEmpty()) {
+        models.add(trimmed);
+      }
+    }
+    return models;
   }
 
   private String resolveApiKey(String perRequestKey) {

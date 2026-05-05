@@ -25,7 +25,6 @@ import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.ozone.recon.chatbot.ChatbotConfigKeys;
 import org.apache.hadoop.ozone.recon.chatbot.security.CredentialHelper;
 
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -112,7 +111,9 @@ public class AnthropicClient implements LLMClient {
 
   @Override
   public List<String> getSupportedModels() {
-    return Arrays.asList("claude-opus-4-6", "claude-sonnet-4-6");
+    return GeminiClient.loadModelsFromConfig(configuration,
+        ChatbotConfigKeys.OZONE_RECON_CHATBOT_ANTHROPIC_MODELS,
+        ChatbotConfigKeys.OZONE_RECON_CHATBOT_ANTHROPIC_MODELS_DEFAULT);
   }
 
   private String resolveApiKey(String perRequestKey) {

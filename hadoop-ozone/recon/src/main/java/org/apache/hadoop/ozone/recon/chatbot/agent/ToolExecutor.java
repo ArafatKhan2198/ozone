@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.hdds.recon.ReconConfigKeys;
 import org.apache.hadoop.ozone.recon.chatbot.ChatbotConfigKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,9 +64,18 @@ public class ToolExecutor {
 
   @Inject
   public ToolExecutor(OzoneConfiguration configuration) {
-    // Get Recon base URL from configuration
-    // Default to localhost for local development
-    this.reconBaseUrl = "http://localhost:9888";
+    // Build Recon base URL from configuration. We're calling Recon's own REST
+    // API from inside Recon, so use http-address (HTTP REST endpoint) — NOT
+    // ozone.recon.address which is the SCM/DN registration RPC port.
+    String httpAddr = configuration.get(
+        ReconConfigKeys.OZONE_RECON_HTTP_ADDRESS_KEY,
+        ReconConfigKeys.OZONE_RECON_HTTP_ADDRESS_DEFAULT);
+    // 0.0.0.0 is a bind-address, not a callable host. Rewrite to localhost
+    // so the loopback call actually reaches the local Recon process.
+    if (httpAddr.startsWith("0.0.0.0:")) {
+      httpAddr = "localhost:" + httpAddr.substring("0.0.0.0:".length());
+    }
+    this.reconBaseUrl = "http://" + httpAddr;
 
     this.defaultMaxRecords = configuration.getInt(
         ChatbotConfigKeys.OZONE_RECON_CHATBOT_EXEC_MAX_RECORDS,
