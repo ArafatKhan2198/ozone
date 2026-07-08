@@ -50,7 +50,6 @@ import org.apache.ratis.protocol.Message;
 import org.apache.ratis.protocol.RaftGroupId;
 import org.apache.ratis.protocol.RaftGroupMemberId;
 import org.apache.ratis.protocol.RaftPeerId;
-import org.apache.ratis.server.DivisionInfo;
 import org.apache.ratis.server.RaftServer;
 import org.apache.ratis.server.protocol.TermIndex;
 import org.apache.ratis.server.storage.RaftStorage;
@@ -87,6 +86,12 @@ public class SCMStateMachine extends BaseStateMachine {
   private List<ManagedSecretKey> installingSecretKeys = null;
 
   private AtomicBoolean isStateMachineReady = new AtomicBoolean();
+
+  // The leader's committed index captured when this SCM (re)joins as a
+  // follower. Catch-up is measured against this fixed target rather than the
+  // leader's live commit index, which on a busy cluster keeps advancing and
+  // would never be reached. Set only while not yet ready; -1 means uncaptured.
+  private volatile long leaderCommitIndexOnStart = -1L;
 
   public SCMStateMachine(final StorageContainerManager scm,
       SCMHADBTransactionBuffer buffer) {
@@ -174,6 +179,11 @@ public class SCMStateMachine extends BaseStateMachine {
       final TermIndex appliedTermIndex = TermIndex.valueOf(trx.getLogEntry());
       transactionBuffer.updateLatestTrxInfo(TransactionInfo.valueOf(appliedTermIndex));
       updateLastAppliedTermIndex(appliedTermIndex);
+
+      // A restarted follower may catch up by applying data-carrying entries
+      // here rather than through notifyTermIndexUpdated, so check for catch-up
+      // in both places. No-op once the datanode protocol server has started.
+      tryStartDNServerAndRefreshSafeMode();
     } catch (Exception ex) {
       applyTransactionFuture.completeExceptionally(ex);
       ExitUtils.terminate(1, ex.getMessage(), ex, StateMachine.LOG);
@@ -280,9 +290,16 @@ public class SCMStateMachine extends BaseStateMachine {
     final boolean isLeader = groupMemberId.getPeerId().equals(newLeaderId);
 
     if (!isLeader) {
-      // Follower: start the datanode protocol server if we are already caught
-      // up with the leader's committed log; otherwise notifyTermIndexUpdated
-      // starts it as catch-up completes.
+      // Follower: capture the leader's current committed index as the fixed
+      // catch-up target (only while not yet ready), then start the datanode
+      // protocol server if we are already caught up with it; otherwise
+      // applyTransaction / notifyTermIndexUpdated start it as catch-up completes.
+      if (!isStateMachineReady.get()) {
+        long leaderCommit = getLeaderCommitIndex();
+        if (leaderCommit >= 0) {
+          leaderCommitIndexOnStart = leaderCommit;
+        }
+      }
       tryStartDNServerAndRefreshSafeMode();
       String message = "Leader changed to " + newLeaderId +
           ", current SCM " + scm.getScmId() + " is still follower.";
@@ -411,38 +428,57 @@ public class SCMStateMachine extends BaseStateMachine {
 
   /**
    * @return true if this follower's last applied index has reached the leader's
-   * committed index, i.e. all committed transactions have been replayed.
+   * committed index captured when it (re)joined, i.e. all transactions the
+   * leader had committed at that point have been replayed. Comparing against a
+   * fixed target avoids chasing the leader's ever-advancing live commit index.
    */
   private boolean isFollowerCaughtUp() {
     try {
-      RaftServer.Division division = scm.getScmHAManager()
-          .getRatisServer().getDivision();
-      DivisionInfo divisionInfo = division.getInfo();
-      long lastAppliedIndex = divisionInfo.getLastAppliedIndex();
-
-      RaftPeerId leaderId = divisionInfo.getLeaderId();
-      if (leaderId != null) {
-        for (RaftProtos.CommitInfoProto info : division.getCommitInfos()) {
-          if (info.getServer().getId().equals(leaderId.toByteString())) {
-            long leaderCommit = info.getCommitIndex();
-            boolean caughtUp = lastAppliedIndex >= leaderCommit;
-            if (caughtUp) {
-              LOG.info("Follower caught up with leader: lastAppliedIndex={}, leaderCommit={}",
-                  lastAppliedIndex, leaderCommit);
-            } else {
-              LOG.debug("Follower not caught up: lastAppliedIndex={}, leaderCommit={}",
-                  lastAppliedIndex, leaderCommit);
-            }
-            return caughtUp;
-          }
+      long target = leaderCommitIndexOnStart;
+      if (target < 0) {
+        // Not captured at leader-change time yet; capture the leader's current
+        // commit index once here so we still compare against a fixed target.
+        target = getLeaderCommitIndex();
+        if (target < 0) {
+          LOG.warn("Leader commit index not available yet");
+          return false;
         }
+        leaderCommitIndexOnStart = target;
       }
-      LOG.warn("Leader commit index not available yet, leaderId={}", leaderId);
-      return false;
+
+      long lastAppliedIndex = scm.getScmHAManager().getRatisServer()
+          .getDivision().getInfo().getLastAppliedIndex();
+      boolean caughtUp = lastAppliedIndex >= target;
+      if (caughtUp) {
+        LOG.info("Follower caught up with leader: lastAppliedIndex={}, leaderCommitOnStart={}",
+            lastAppliedIndex, target);
+      } else {
+        LOG.debug("Follower not caught up: lastAppliedIndex={}, leaderCommitOnStart={}",
+            lastAppliedIndex, target);
+      }
+      return caughtUp;
     } catch (Exception e) {
       LOG.warn("Failed to check follower catch-up status", e);
       return false;
     }
+  }
+
+  /**
+   * @return the leader's current committed index as seen by this SCM, or -1 if
+   * the leader or its commit info is not available yet.
+   */
+  private long getLeaderCommitIndex() {
+    RaftServer.Division division = scm.getScmHAManager()
+        .getRatisServer().getDivision();
+    RaftPeerId leaderId = division.getInfo().getLeaderId();
+    if (leaderId != null) {
+      for (RaftProtos.CommitInfoProto info : division.getCommitInfos()) {
+        if (info.getServer().getId().equals(leaderId.toByteString())) {
+          return info.getCommitIndex();
+        }
+      }
+    }
+    return -1L;
   }
 
   public boolean getIsStateMachineReady() {
