@@ -32,6 +32,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.hadoop.hdds.protocol.proto.SCMRatisProtocol.RequestType;
 import org.apache.hadoop.hdds.scm.block.DeletedBlockLog;
 import org.apache.hadoop.hdds.scm.block.DeletedBlockLogImpl;
@@ -87,10 +88,22 @@ public class SCMStateMachine extends BaseStateMachine {
 
   private AtomicBoolean isStateMachineReady = new AtomicBoolean();
 
+  // Separate guard for the deferred datanode protocol server start. Kept
+  // distinct from isStateMachineReady so that starting the server is decoupled
+  // from the StateMachineReadyRule safe-mode signal, which isStateMachineReady
+  // drives.
+  private AtomicBoolean dnServerStarted = new AtomicBoolean();
+
+  // The current leader's term, captured at each leader change. Used in
+  // notifyTermIndexUpdated to detect when a restarted SCM has replayed all of
+  // that term's pending transactions, so isStateMachineReady can be set.
+  private AtomicLong currentLeaderTerm = new AtomicLong(-1L);
+
   // The leader's committed index captured when this SCM (re)joins as a
-  // follower. Catch-up is measured against this fixed target rather than the
-  // leader's live commit index, which on a busy cluster keeps advancing and
-  // would never be reached. Set only while not yet ready; -1 means uncaptured.
+  // follower. Catch-up (for starting the datanode server) is measured against
+  // this fixed target rather than the leader's live commit index, which on a
+  // busy cluster keeps advancing and would never be reached. Set only until the
+  // datanode server has started; -1 means uncaptured.
   private volatile long leaderCommitIndexOnStart = -1L;
 
   public SCMStateMachine(final StorageContainerManager scm,
@@ -183,7 +196,7 @@ public class SCMStateMachine extends BaseStateMachine {
       // A restarted follower may catch up by applying data-carrying entries
       // here rather than through notifyTermIndexUpdated, so check for catch-up
       // in both places. No-op once the datanode protocol server has started.
-      tryStartDNServerAndRefreshSafeMode();
+      tryStartDatanodeProtocolServer();
     } catch (Exception ex) {
       applyTransactionFuture.completeExceptionally(ex);
       ExitUtils.terminate(1, ex.getMessage(), ex, StateMachine.LOG);
@@ -287,20 +300,32 @@ public class SCMStateMachine extends BaseStateMachine {
       return;
     }
 
+    currentLeaderTerm.set(scm.getScmHAManager().getRatisServer().getDivision()
+        .getInfo().getCurrentTerm());
+
+    if (isStateMachineReady.compareAndSet(false, true)) {
+      // refresh and validate safe mode rules if it can exit safe mode
+      // if being leader, all previous term transactions have been applied
+      // if other states, just refresh safe mode rules, and transaction keeps flushing from leader
+      // and does not depend on pending transactions.
+      scm.getScmSafeModeManager().refreshAndValidate();
+    }
+
     final boolean isLeader = groupMemberId.getPeerId().equals(newLeaderId);
 
     if (!isLeader) {
       // Follower: capture the leader's current committed index as the fixed
-      // catch-up target (only while not yet ready), then start the datanode
-      // protocol server if we are already caught up with it; otherwise
-      // applyTransaction / notifyTermIndexUpdated start it as catch-up completes.
-      if (!isStateMachineReady.get()) {
+      // catch-up target for starting the datanode protocol server (only until
+      // the server has started), then start it if we are already caught up;
+      // otherwise applyTransaction / notifyTermIndexUpdated start it as
+      // catch-up completes.
+      if (!dnServerStarted.get()) {
         long leaderCommit = getLeaderCommitIndex();
         if (leaderCommit >= 0) {
           leaderCommitIndexOnStart = leaderCommit;
         }
       }
-      tryStartDNServerAndRefreshSafeMode();
+      tryStartDatanodeProtocolServer();
       String message = "Leader changed to " + newLeaderId +
           ", current SCM " + scm.getScmId() + " is still follower.";
       LOG.info(message);
@@ -308,19 +333,17 @@ public class SCMStateMachine extends BaseStateMachine {
       return;
     }
 
-    long currentTerm = scm.getScmHAManager().getRatisServer().getDivision()
-        .getInfo().getCurrentTerm();
     String message = "current SCM " + scm.getScmId() +
-        " becomes leader of term " + currentTerm;
+        " becomes leader of term " + currentLeaderTerm;
     LOG.info(message);
     addRatisEvent(message);
 
-    scm.getScmContext().updateLeaderAndTerm(true, currentTerm);
+    scm.getScmContext().updateLeaderAndTerm(true, currentLeaderTerm.get());
     scm.getSequenceIdGen().invalidateBatch();
 
     // isLeader() is now true -> start the datanode protocol server for the new
-    // leader (a leader has applied all committed entries) and refresh safe mode.
-    tryStartDNServerAndRefreshSafeMode();
+    // leader (a leader has applied all committed entries).
+    tryStartDatanodeProtocolServer();
 
     try {
       transactionBuffer.flush();
@@ -396,32 +419,42 @@ public class SCMStateMachine extends BaseStateMachine {
       }
     }
 
+    if (currentLeaderTerm.get() == term) {
+      // This means after a restart, all pending transactions have been applied.
+      if (isStateMachineReady.compareAndSet(false, true)) {
+        // Refresh Safemode rules state if not already done.
+        scm.getScmSafeModeManager().refreshAndValidate();
+      }
+      currentLeaderTerm.set(-1L);
+    }
+
     // As committed entries are applied (e.g. a restarted follower catching up),
-    // start the datanode protocol server once we are caught up with the leader's
-    // committed index. No-op once the server has already been started.
-    tryStartDNServerAndRefreshSafeMode();
+    // start the datanode protocol server once caught up with the leader's
+    // committed index captured at (re)join. No-op once the server has started.
+    tryStartDatanodeProtocolServer();
   }
 
   /**
-   * Start the DatanodeProtocolServer and re-evaluate safe-mode rules, but only
-   * when this SCM is safe to accept datanode reports: it is the leader, or it
-   * is a follower whose state machine has caught up with the leader's committed
-   * log. Guarded by {@code isStateMachineReady} (CAS) so the non-idempotent
+   * Start the DatanodeProtocolServer exactly once, when this SCM is safe to
+   * accept datanode reports: it is the leader, or a follower whose state machine
+   * has caught up with the leader's committed index captured at (re)join.
+   * Guarded by {@code dnServerStarted} (CAS) so the non-idempotent
    * {@code DatanodeProtocolServer.start()} runs exactly once.
    *
    * <p>In HA mode {@link StorageContainerManager#start()} deliberately does not
    * start the datanode protocol server; it is deferred to here so datanode
    * container reports are processed against the up-to-date container/pipeline
-   * state rather than a stale, mid-replay snapshot.
+   * state rather than a stale, mid-replay snapshot. This is intentionally
+   * independent of {@code isStateMachineReady}, which drives the
+   * StateMachineReadyRule safe-mode rule.
    */
-  private void tryStartDNServerAndRefreshSafeMode() {
-    if (isStateMachineReady.get()) {
+  private void tryStartDatanodeProtocolServer() {
+    if (dnServerStarted.get()) {
       return;
     }
     if (scm.getScmContext().isLeader() || isFollowerCaughtUp()) {
-      if (isStateMachineReady.compareAndSet(false, true)) {
+      if (dnServerStarted.compareAndSet(false, true)) {
         scm.getDatanodeProtocolServer().start();
-        scm.getScmSafeModeManager().refreshAndValidate();
       }
     }
   }
