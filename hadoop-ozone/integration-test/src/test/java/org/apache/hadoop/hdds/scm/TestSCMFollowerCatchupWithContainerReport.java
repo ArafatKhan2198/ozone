@@ -58,8 +58,8 @@ import org.slf4j.LoggerFactory;
  * such containers must still have the expected replica count and all keys must
  * be readable.
  *
- * <p>This is the create-while-down counterpart of
- * {@code TestSCMFollowerCatchupWithContainerClose} (HDDS-14989). It exercises
+ * <p>This class covers the create-while-down, close-while-down, and
+ * idle-cluster scenarios for HDDS-14989. It exercises
  * the deferred datanode-server start: the restarted follower must finish Raft
  * log replay <em>before</em> accepting datanode container reports, otherwise a
  * report for a not-yet-replayed container is dropped with CONTAINER_NOT_FOUND

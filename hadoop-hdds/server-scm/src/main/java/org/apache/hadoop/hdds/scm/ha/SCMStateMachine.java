@@ -439,7 +439,9 @@ public class SCMStateMachine extends BaseStateMachine {
         // commit index once here so we still compare against a fixed target.
         target = getLeaderCommitIndex();
         if (target < 0) {
-          LOG.warn("Leader commit index not available yet");
+          // Normal transient condition during startup/catch-up; this is polled
+          // from multiple callbacks, so keep it at DEBUG to avoid log flooding.
+          LOG.debug("Leader commit index not available yet");
           return false;
         }
         leaderCommitIndexOnStart = target;
