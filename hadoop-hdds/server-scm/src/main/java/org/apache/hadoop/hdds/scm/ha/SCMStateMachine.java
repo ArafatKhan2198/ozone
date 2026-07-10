@@ -290,15 +290,14 @@ public class SCMStateMachine extends BaseStateMachine {
     final boolean isLeader = groupMemberId.getPeerId().equals(newLeaderId);
 
     if (!isLeader) {
-      // Follower: capture the leader's current committed index as the fixed
-      // catch-up target (only while not yet ready), then start the datanode
-      // protocol server if we are already caught up with it; otherwise
-      // applyTransaction / notifyTermIndexUpdated start it as catch-up completes.
+      // Follower: capture the (possibly new) leader's current committed index
+      // as the fixed catch-up target, then start the datanode protocol server
+      // if we are already caught up with it; otherwise applyTransaction /
+      // notifyTermIndexUpdated start it as catch-up completes. Set it always:
+      // getLeaderCommitIndex() returns -1 when the leader is not known yet,
+      // which isFollowerCaughtUp() treats as uncaptured and re-reads later.
       if (!isStateMachineReady.get()) {
-        long leaderCommit = getLeaderCommitIndex();
-        if (leaderCommit >= 0) {
-          leaderCommitIndexOnStart = leaderCommit;
-        }
+        leaderCommitIndexOnStart = getLeaderCommitIndex();
       }
       tryStartDNServerAndRefreshSafeMode();
       String message = "Leader changed to " + newLeaderId +
