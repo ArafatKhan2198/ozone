@@ -421,19 +421,20 @@ public class SCMStateMachine extends BaseStateMachine {
     if (isStateMachineReady.get() || dnServerStartExecutor != null) {
       return;
     }
-    dnServerStartExecutor = Executors.newSingleThreadScheduledExecutor(
+    final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(
         new ThreadFactoryBuilder()
             .setNameFormat(scm.threadNamePrefix() + "SCMDNServerStartCheck-%d")
             .setDaemon(true)
             .build());
-    dnServerStartExecutor.scheduleWithFixedDelay(() -> {
+    dnServerStartExecutor = executor;
+    executor.scheduleWithFixedDelay(() -> {
       try {
         tryStartDNServerAndRefreshSafeMode();
       } catch (Throwable t) {
         LOG.warn("Error while checking catch-up for datanode server start", t);
       }
       if (isStateMachineReady.get()) {
-        dnServerStartExecutor.shutdown();
+        executor.shutdown();
       }
     }, 0, 1, TimeUnit.SECONDS);
   }
