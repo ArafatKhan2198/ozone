@@ -30,6 +30,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.hadoop.hdds.protocol.proto.SCMRatisProtocol.RequestType;
@@ -92,6 +94,12 @@ public class SCMStateMachine extends BaseStateMachine {
   // leader's live commit index, which on a busy cluster keeps advancing and
   // would never be reached. Set only while not yet ready; -1 means uncaptured.
   private volatile long leaderCommitIndexOnStart = -1L;
+
+  // Re-checks catch-up until the datanode protocol server is started, so a
+  // restarted follower on an otherwise idle cluster (no applyTransaction /
+  // notifyTermIndexUpdated callbacks to re-drive the check) still starts its DN
+  // server and exits safe mode. Self-terminates once the server has started.
+  private ScheduledExecutorService dnServerStartExecutor;
 
   public SCMStateMachine(final StorageContainerManager scm,
       SCMHADBTransactionBuffer buffer) {
@@ -299,7 +307,7 @@ public class SCMStateMachine extends BaseStateMachine {
       if (!isStateMachineReady.get()) {
         leaderCommitIndexOnStart = getLeaderCommitIndex();
       }
-      tryStartDNServerAndRefreshSafeMode();
+      scheduleDNServerStartCheck();
       String message = "Leader changed to " + newLeaderId +
           ", current SCM " + scm.getScmId() + " is still follower.";
       LOG.info(message);
@@ -402,17 +410,34 @@ public class SCMStateMachine extends BaseStateMachine {
   }
 
   /**
-   * Start the DatanodeProtocolServer and re-evaluate safe-mode rules, but only
-   * when this SCM is safe to accept datanode reports: it is the leader, or it
-   * is a follower whose state machine has caught up with the leader's committed
-   * log. Guarded by {@code isStateMachineReady} (CAS) so the non-idempotent
-   * {@code DatanodeProtocolServer.start()} runs exactly once.
-   *
-   * <p>In HA mode {@link StorageContainerManager#start()} deliberately does not
-   * start the datanode protocol server; it is deferred to here so datanode
-   * container reports are processed against the up-to-date container/pipeline
-   * state rather than a stale, mid-replay snapshot.
+   * Periodically re-evaluate catch-up and start the datanode protocol server
+   * once ready. This is required because on an idle cluster a restarted follower
+   * may get no further applyTransaction / notifyTermIndexUpdated callbacks to
+   * re-drive {@link #tryStartDNServerAndRefreshSafeMode()} after the single
+   * notifyLeaderChanged, so without this it could stay in safe mode forever. The
+   * task stops itself once the server has been started.
    */
+  private synchronized void scheduleDNServerStartCheck() {
+    if (isStateMachineReady.get() || dnServerStartExecutor != null) {
+      return;
+    }
+    dnServerStartExecutor = Executors.newSingleThreadScheduledExecutor(
+        new ThreadFactoryBuilder()
+            .setNameFormat(scm.threadNamePrefix() + "SCMDNServerStartCheck-%d")
+            .setDaemon(true)
+            .build());
+    dnServerStartExecutor.scheduleWithFixedDelay(() -> {
+      try {
+        tryStartDNServerAndRefreshSafeMode();
+      } catch (Throwable t) {
+        LOG.warn("Error while checking catch-up for datanode server start", t);
+      }
+      if (isStateMachineReady.get()) {
+        dnServerStartExecutor.shutdown();
+      }
+    }, 0, 1, TimeUnit.SECONDS);
+  }
+
   private void tryStartDNServerAndRefreshSafeMode() {
     if (isStateMachineReady.get()) {
       return;
@@ -439,8 +464,6 @@ public class SCMStateMachine extends BaseStateMachine {
         // commit index once here so we still compare against a fixed target.
         target = getLeaderCommitIndex();
         if (target < 0) {
-          // Normal transient condition during startup/catch-up; this is polled
-          // from multiple callbacks, so keep it at DEBUG to avoid log flooding.
           LOG.debug("Leader commit index not available yet");
           return false;
         }
