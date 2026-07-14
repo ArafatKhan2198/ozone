@@ -370,7 +370,7 @@ abstract class AbstractContainerReportHandler {
    * drives the transition and it replicates back via the Ratis log.
    */
   private void updateContainerState(ContainerID containerID, LifeCycleEvent event)
-      throws InvalidStateTransitionException, IOException {
+      throws IOException {
     if (scmContext.isLeader()) {
       containerManager.updateContainerState(containerID, event);
     } else {
