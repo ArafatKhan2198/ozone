@@ -195,13 +195,15 @@ public class TestLangChain4jDispatcher {
     List<LLMClient.ChatMessage> messages = new ArrayList<>();
     messages.add(new LLMClient.ChatMessage("user", "hello"));
 
-    // Expected to throw because fake URL is not reachable, but it should reach the builder
+    // Fake URL is not reachable; routing past key/base-url validation means we attempted gateway.
     Exception ex = assertThrows(Exception.class, () ->
         dispatcher.chatCompletion(messages, "claude-sonnet", "gateway",
             new GenParams(0.1, 1000), null));
-        
-    // Verification that it tried to route to gateway is implicit if it doesn't throw
-    // the "No API key" or base URL errors.
+    String msg = ex.getMessage() != null ? ex.getMessage() : "";
+    assertFalse(msg.contains("must be set when using the gateway provider"),
+        "Should not fail on missing gateway.base.url");
+    assertFalse(msg.contains("No API key configured"),
+        "Should not fail on missing gateway API key");
   }
 
   @Test
