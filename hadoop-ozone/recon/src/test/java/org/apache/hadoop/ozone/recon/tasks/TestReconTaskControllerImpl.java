@@ -818,6 +818,52 @@ public class TestReconTaskControllerImpl extends AbstractReconSqlDBTest {
    * @param taskName name of the task.
    * @return instance of reconOmTask.
    */
+  @Test
+  public void testManualTriggerSeqAlignment() throws Exception {
+    ReconOMMetadataManager omMetadataManager = mock(ReconOMMetadataManager.class);
+    DBStore dbStore = mock(DBStore.class);
+    when(omMetadataManager.getStore()).thenReturn(dbStore);
+    when(omMetadataManager.getLastSequenceNumberFromDB()).thenReturn(12345L);
+    
+    File tempDir = Paths.get(System.getProperty("java.io.tmpdir"), "recon-test").toFile();
+    when(dbStore.getDbLocation()).thenReturn(tempDir);
+    DBCheckpoint checkpoint = mock(DBCheckpoint.class);
+    when(dbStore.getCheckpoint(anyString(), any(Boolean.class))).thenReturn(checkpoint);
+    when(omMetadataManager.createCheckpointReconMetadataManager(any(), any()))
+        .thenReturn(omMetadataManager);
+
+    ReconTaskControllerImpl controller = (ReconTaskControllerImpl) reconTaskController;
+    controller.updateOMMetadataManager(omMetadataManager);
+
+    ReconTaskStatus deltaStatus = new ReconTaskStatus();
+    deltaStatus.setTaskName("OmDeltaRequest");
+    deltaStatus.setLastUpdatedSeqNumber(0L);
+    reconTaskStatusDao.insert(deltaStatus);
+
+    ReconTaskStatus snapshotStatus = new ReconTaskStatus();
+    snapshotStatus.setTaskName("OmSnapshotRequest");
+    snapshotStatus.setLastUpdatedSeqNumber(0L);
+    reconTaskStatusDao.insert(snapshotStatus);
+
+    // Queue manual trigger
+    ReconTaskController.ReInitializationResult result = controller.queueReInitializationEvent(
+        ReconTaskReInitializationEvent.ReInitializationReason.MANUAL_TRIGGER);
+    assertEquals(ReconTaskController.ReInitializationResult.SUCCESS, result);
+
+    // Wait for event to process and seq alignment
+    GenericTestUtils.waitFor(() -> {
+      ReconTaskStatus deltaStatusAfter = reconTaskStatusDao.findById("OmDeltaRequest");
+      return deltaStatusAfter != null && deltaStatusAfter.getLastUpdatedSeqNumber() == 12345L;
+    }, 100, 5000);
+
+    // Verify seq alignment
+    ReconTaskStatus deltaStatusAfter = reconTaskStatusDao.findById("OmDeltaRequest");
+    ReconTaskStatus snapshotStatusAfter = reconTaskStatusDao.findById("OmSnapshotRequest");
+
+    assertEquals(12345L, deltaStatusAfter.getLastUpdatedSeqNumber().longValue());
+    assertEquals(12345L, snapshotStatusAfter.getLastUpdatedSeqNumber().longValue());
+  }
+
   private ReconOmTask getMockTask(String taskName) {
     ReconOmTask reconOmTaskMock = mock(ReconOmTask.class);
     when(reconOmTaskMock.getTaskName()).thenReturn(taskName);

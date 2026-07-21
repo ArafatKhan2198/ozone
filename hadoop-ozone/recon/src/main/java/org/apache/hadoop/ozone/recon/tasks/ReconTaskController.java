@@ -116,4 +116,9 @@ public interface ReconTaskController {
    */
   @VisibleForTesting
   int getEventBufferSize();
+
+  /**
+   * Reset retry counters to clear any pending retry delay.
+   */
+  void resetRetryCounters();
 }

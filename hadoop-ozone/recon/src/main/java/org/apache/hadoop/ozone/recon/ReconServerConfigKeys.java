@@ -47,6 +47,10 @@ public final class  ReconServerConfigKeys {
   public static final String OZONE_RECON_OM_SNAPSHOT_DB_DIR =
       "ozone.recon.om.db.dir";
 
+  public static final String OZONE_RECON_TASK_REBUILD_ENABLED =
+      "ozone.recon.task.rebuild.enabled";
+  public static final boolean OZONE_RECON_TASK_REBUILD_ENABLED_DEFAULT = false;
+
   public static final String OZONE_RECON_SCM_DB_DIR =
       "ozone.recon.scm.db.dirs";
 

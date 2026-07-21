@@ -3553,6 +3553,17 @@
     </description>
   </property>
   <property>
+    <name>ozone.recon.task.rebuild.enabled</name>
+    <value>false</value>
+    <tag>OZONE, RECON, MANAGEMENT</tag>
+    <description>
+      If true, enables the manual OM DB rebuild endpoint in Recon. This allows operators
+      to trigger a full rebuild of all derived metadata from the local OM DB via the
+      /api/v1/triggerdbsync/om/reinit endpoint. This should only be enabled temporarily
+      when bootstrapping a manually placed OM DB during an OM outage.
+    </description>
+  </property>
+  <property>
     <name>ozone.recon.om.db.dir</name>
   <value/>
   <tag>OZONE, RECON, STORAGE</tag>

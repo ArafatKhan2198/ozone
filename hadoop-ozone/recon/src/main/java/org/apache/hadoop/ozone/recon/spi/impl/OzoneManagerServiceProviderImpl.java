@@ -33,6 +33,8 @@ import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.OZONE_RECON_OM
 import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.OZONE_RECON_OM_SNAPSHOT_TASK_INITIAL_DELAY_DEFAULT;
 import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.OZONE_RECON_OM_SNAPSHOT_TASK_INTERVAL_DEFAULT;
 import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.OZONE_RECON_OM_SNAPSHOT_TASK_INTERVAL_DELAY;
+import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.OZONE_RECON_TASK_REBUILD_ENABLED;
+import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.OZONE_RECON_TASK_REBUILD_ENABLED_DEFAULT;
 import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.RECON_OM_DELTA_UPDATE_LAG_THRESHOLD;
 import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.RECON_OM_DELTA_UPDATE_LAG_THRESHOLD_DEFAULT;
 import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.RECON_OM_DELTA_UPDATE_LIMIT;
@@ -85,6 +87,9 @@ import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.DBUpdat
 import org.apache.hadoop.ozone.recon.ReconContext;
 import org.apache.hadoop.ozone.recon.ReconServerConfigKeys;
 import org.apache.hadoop.ozone.recon.ReconUtils;
+import org.apache.hadoop.ozone.recon.api.types.OMDBReprocessResponse;
+import org.apache.hadoop.ozone.recon.tasks.ReconTaskController;
+import org.apache.hadoop.ozone.recon.tasks.ReconTaskReInitializationEvent;
 import org.apache.hadoop.ozone.recon.metrics.OzoneManagerSyncMetrics;
 import org.apache.hadoop.ozone.recon.metrics.ReconSyncMetrics;
 import org.apache.hadoop.ozone.recon.recovery.ReconOMMetadataManager;
@@ -134,6 +139,7 @@ public class OzoneManagerServiceProviderImpl
   private ReconContext reconContext;
   private ReconTaskStatusUpdaterManager taskStatusUpdaterManager;
   private ReconRDBSnapshotProvider reconSnapshotProvider;
+  private final boolean isTaskRebuildEnabled;
 
   /**
    * OM Snapshot related task names.
@@ -209,6 +215,9 @@ public class OzoneManagerServiceProviderImpl
     this.reconSyncMetrics = ReconSyncMetrics.create();
     this.deltaUpdateLimit = deltaUpdateLimits;
     this.isSyncDataFromOMRunning = new AtomicBoolean();
+    this.isTaskRebuildEnabled = configuration.getBoolean(
+        OZONE_RECON_TASK_REBUILD_ENABLED,
+        OZONE_RECON_TASK_REBUILD_ENABLED_DEFAULT);
     this.threadNamePrefix =
         reconUtils.getReconNodeDetails(configuration).threadNamePrefix();
     this.threadFactory =
@@ -559,6 +568,26 @@ public class OzoneManagerServiceProviderImpl
       LOG.error("Unable to refresh Recon OM DB Snapshot.", e);
       reconSyncMetrics.incrSnapshotDownloadFailures();
       return false;
+    }
+  }
+
+  @Override
+  public OMDBReprocessResponse triggerTaskRebuild() {
+    if (!isTaskRebuildEnabled) {
+      return new OMDBReprocessResponse(OMDBReprocessResponse.Status.FORBIDDEN,
+          "Manual OM DB rebuild is disabled. Set " + OZONE_RECON_TASK_REBUILD_ENABLED + " to true.");
+    }
+
+    reconTaskController.resetRetryCounters();
+    ReconTaskController.ReInitializationResult result = reconTaskController.queueReInitializationEvent(
+        ReconTaskReInitializationEvent.ReInitializationReason.MANUAL_TRIGGER);
+
+    if (result == ReconTaskController.ReInitializationResult.SUCCESS) {
+      return new OMDBReprocessResponse(OMDBReprocessResponse.Status.ACCEPTED,
+          "Manual OM DB rebuild queued successfully.");
+    } else {
+      return new OMDBReprocessResponse(OMDBReprocessResponse.Status.RETRY,
+          "Manual OM DB rebuild could not be queued. Buffer might be full or another rebuild is pending. Please retry.");
     }
   }
 

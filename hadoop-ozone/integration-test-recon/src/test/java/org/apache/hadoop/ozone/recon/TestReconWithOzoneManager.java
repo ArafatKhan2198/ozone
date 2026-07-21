@@ -103,6 +103,7 @@ public class TestReconWithOzoneManager {
         TimeUnit.MILLISECONDS
     );
     conf.setLong(RECON_OM_DELTA_UPDATE_LIMIT, 10);
+    conf.setBoolean(ReconServerConfigKeys.OZONE_RECON_TASK_REBUILD_ENABLED, true);
 
     RequestConfig config = RequestConfig.custom()
         .setConnectTimeout(socketTimeout)
@@ -393,6 +394,83 @@ public class TestReconWithOzoneManager {
    * Helper function to add voli/bucketi/keyi to containeri to OM Metadata.
    * For test purpose each container will have only one key.
    */
+  @Test
+  public void testManualOMDBRebuild() throws Exception {
+    OzoneManagerServiceProviderImpl impl = (OzoneManagerServiceProviderImpl)
+        recon.getReconServer().getOzoneManagerServiceProvider();
+    OzoneConfiguration reconConf = recon.getReconServer().getOzoneConf();
+
+    // 1. Stop Recon
+    recon.stop();
+
+    // 2. Write keys to OM
+    addKeys(20, 25);
+    long omLatestSeqNumber = ((RDBStore) metadataManager.getStore())
+        .getDb().getLatestSequenceNumber();
+    java.io.File omDbDir = metadataManager.getStore().getDbLocation();
+
+    // 3. Stop OM (flush to disk)
+    cluster.getOzoneManager().stop();
+
+    // 4. Copy OM DB into Recon's OM snapshot dir
+    java.io.File configuredReconDbDir = new java.io.File(
+        cluster.getConf().get(ReconServerConfigKeys.OZONE_RECON_OM_SNAPSHOT_DB_DIR));
+    java.io.File actualReconDbDir = new java.io.File(configuredReconDbDir.getParentFile(), "Recon");
+    java.io.File reconOmDbDir = new java.io.File(actualReconDbDir, "om.db_" + System.currentTimeMillis());
+    System.out.println("Test copying to: " + reconOmDbDir.getAbsolutePath());
+    org.apache.commons.io.FileUtils.deleteDirectory(reconOmDbDir);
+    org.apache.commons.io.FileUtils.copyDirectory(omDbDir, reconOmDbDir);
+
+    // 5. Restart Recon
+    recon.start(cluster.getConf());
+    
+    // 6. POST reinit
+    String triggerUrl = "http://" + cluster.getConf().get(OZONE_RECON_HTTP_ADDRESS_KEY) +
+        "/api/v1/triggerdbsync/om/reinit";
+    org.apache.http.client.methods.HttpPost httpPost = new org.apache.http.client.methods.HttpPost(triggerUrl);
+    HttpResponse response = httpClient.execute(httpPost);
+    assertEquals(202, response.getStatusLine().getStatusCode());
+
+    // 7. Wait for tasks to succeed
+    GenericTestUtils.waitFor(() -> {
+      try {
+        String taskStatusResponse = makeHttpCall(taskStatusURL);
+        long reconLatestSeqNumber = getReconTaskAttributeFromJson(
+            taskStatusResponse,
+            OmSnapshotRequest.name(),
+            "lastUpdatedSeqNumber");
+        return reconLatestSeqNumber == omLatestSeqNumber;
+      } catch (Exception e) {
+        return false;
+      }
+    }, 1000, 30000);
+
+    // 8. Start OM
+    cluster.getOzoneManager().restart();
+
+    // 9. Write more keys and verify delta resumes
+    addKeys(25, 30);
+    long newOmLatestSeqNumber = ((RDBStore) cluster.getOzoneManager().getMetadataManager().getStore())
+        .getDb().getLatestSequenceNumber();
+    
+    OzoneManagerServiceProviderImpl newImpl = (OzoneManagerServiceProviderImpl)
+        recon.getReconServer().getOzoneManagerServiceProvider();
+    newImpl.syncDataFromOM();
+
+    GenericTestUtils.waitFor(() -> {
+      try {
+        String taskStatusResponse = makeHttpCall(taskStatusURL);
+        long reconLatestSeqNumber = getReconTaskAttributeFromJson(
+            taskStatusResponse,
+            OmSnapshotRequest.name(),
+            "lastUpdatedSeqNumber");
+        return reconLatestSeqNumber == newOmLatestSeqNumber;
+      } catch (Exception e) {
+        return false;
+      }
+    }, 1000, 30000);
+  }
+
   private void addKeys(int start, int end) throws Exception {
     for (int i = start; i < end; i++) {
       Pipeline pipeline = HddsTestUtils.getRandomPipeline();
