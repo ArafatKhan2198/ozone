@@ -67,6 +67,10 @@ public class ChatbotAgent {
 
   // The connection to Gemini/OpenAI
   private static final String LIST_KEYS_TOOL = "api_v1_keys_listKeys";
+
+  // Max reply length (output tokens) per LLM call. Generous fixed ceiling: reasoning
+  // models need headroom for internal thinking, and providers bill actual usage.
+  private static final int MAX_TOKENS = 16384;
   private final LLMClient llmClient;
   private final ReconQueryExecutor reconQueryExecutor;
   private final ReconApiAllowlist reconApiAllowlist;
@@ -91,11 +95,6 @@ public class ChatbotAgent {
 
   // Builds the client-supplied conversation-history context block (V1 memory).
   private final ChatHistoryBuilder historyBuilder;
-
-  // Completion (output) token budgets per LLM call — configurable so reasoning
-  // models have enough headroom for internal thinking before emitting a reply.
-  private final int selectionMaxTokens;
-  private final int summarizationMaxTokens;
 
   @Inject
   public ChatbotAgent(LLMClient llmClient,
@@ -144,12 +143,6 @@ public class ChatbotAgent {
     this.requireSafeScope = configuration.getBoolean(
         ChatbotConfigKeys.OZONE_RECON_CHATBOT_EXEC_REQUIRE_SAFE_SCOPE,
         ChatbotConfigKeys.OZONE_RECON_CHATBOT_EXEC_REQUIRE_SAFE_SCOPE_DEFAULT);
-    this.selectionMaxTokens = configuration.getInt(
-        ChatbotConfigKeys.OZONE_RECON_CHATBOT_SELECTION_MAX_TOKENS,
-        ChatbotConfigKeys.OZONE_RECON_CHATBOT_SELECTION_MAX_TOKENS_DEFAULT);
-    this.summarizationMaxTokens = configuration.getInt(
-        ChatbotConfigKeys.OZONE_RECON_CHATBOT_SUMMARIZATION_MAX_TOKENS,
-        ChatbotConfigKeys.OZONE_RECON_CHATBOT_SUMMARIZATION_MAX_TOKENS_DEFAULT);
 
     LOG.info("ChatbotAgent initialized with requireSafeScope={}", requireSafeScope);
   }
@@ -316,9 +309,7 @@ public class ChatbotAgent {
 
     // --- 2. CONFIGURE GENERATION SETTINGS ---
     // Temperature 0.1: very low creativity — we want strict, deterministic tool selection.
-    // maxTokens is configurable: reasoning models spend output tokens on internal
-    // thinking before emitting the tool call, so a generous budget avoids empty replies.
-    GenParams params = new GenParams(0.1, selectionMaxTokens);
+    GenParams params = new GenParams(0.1, MAX_TOKENS);
 
     // --- 3. SEND TO LLM WITH TOOL SPECS ---
     // Attach all allowed Recon API tools so the LLM can pick which one to invoke.
@@ -448,9 +439,7 @@ public class ChatbotAgent {
     messages.add(new ChatMessage("user", userPrompt));
 
     // Temperature 0.3 allows a tiny bit more natural/human-like language creativity.
-    // maxTokens is configurable: reasoning models (e.g. gemini-2.5-pro) may use tokens on
-    // internal thinking before visible text, so a low cap yields null content from the provider.
-    GenParams params = new GenParams(0.3, summarizationMaxTokens);
+    GenParams params = new GenParams(0.3, MAX_TOKENS);
 
     try {
       LLMResponse response = llmClient.chatCompletion(messages, model, provider, params, null);

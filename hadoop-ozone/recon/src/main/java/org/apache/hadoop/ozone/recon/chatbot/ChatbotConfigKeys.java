@@ -84,38 +84,8 @@ public final class ChatbotConfigKeys {
   public static final String OZONE_RECON_CHATBOT_MAX_TOOL_CALLS = OZONE_RECON_CHATBOT_PREFIX + "max.tool.calls";
   public static final int OZONE_RECON_CHATBOT_MAX_TOOL_CALLS_DEFAULT = 5;
 
-  // ── LLM output-token budgets ─────────────────────────────────
-  /**
-   * Maximum completion (output) tokens for the Stage-1 tool-selection LLM call.
-   * This is the model's reply budget, not the context window. Reasoning models
-   * (e.g. gemini-2.5-pro, o-series) spend output tokens on internal thinking
-   * before emitting the tool call, so too low a value yields an empty response.
-   * Providers bill actual usage, not this ceiling, so a generous value is safe.
-   */
-  public static final String OZONE_RECON_CHATBOT_SELECTION_MAX_TOKENS =
-      OZONE_RECON_CHATBOT_PREFIX + "selection.max.tokens";
-  public static final int OZONE_RECON_CHATBOT_SELECTION_MAX_TOKENS_DEFAULT = 16384;
-
-  /**
-   * Maximum completion (output) tokens for the Stage-3 summarization LLM call.
-   * Same reasoning-model caveat as {@link #OZONE_RECON_CHATBOT_SELECTION_MAX_TOKENS}.
-   */
-  public static final String OZONE_RECON_CHATBOT_SUMMARIZATION_MAX_TOKENS =
-      OZONE_RECON_CHATBOT_PREFIX + "summarization.max.tokens";
-  public static final int OZONE_RECON_CHATBOT_SUMMARIZATION_MAX_TOKENS_DEFAULT = 16384;
-
   // ── Conversation memory (V1, client-side) ───────────────────
-  /**
-   * Total budget, in characters, for all injected conversation history combined
-   * (chars are used because no tokenizer is available; chars ≈ tokens × 4). The
-   * client resends recent turns on each request; they are trimmed to this budget
-   * and injected as context into Stage-1 tool selection so the model can resolve
-   * references ("that bucket", "show me more") in the current question. History is
-   * always treated as untrusted input and enforced server-side.
-   *
-   * <p>This is the single memory dial: raise it for large-context models, lower it
-   * for small ones. Set it to {@code 0} to disable conversation memory entirely.
-   */
+  /** Max characters of prior conversation sent as context; 0 disables memory. */
   public static final String OZONE_RECON_CHATBOT_HISTORY_MAX_CHARS =
       OZONE_RECON_CHATBOT_PREFIX + "history.max.chars";
   public static final int OZONE_RECON_CHATBOT_HISTORY_MAX_CHARS_DEFAULT = 8000;
