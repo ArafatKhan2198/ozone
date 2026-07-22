@@ -151,7 +151,7 @@ public class TestReconTaskControllerImpl extends AbstractReconSqlDBTest {
         omUpdateEventBatchMock,
         mock(OMMetadataManager.class));
 
-    GenericTestUtils.waitFor((org.apache.hadoop.test.GenericTestUtils.CheckedSupplier<Boolean, RuntimeException>) () -> {
+    GenericTestUtils.waitFor(() -> {
       try {
         ReconTaskStatus status = reconTaskStatusDao.findById("MockTask");
         return status != null
@@ -205,7 +205,7 @@ public class TestReconTaskControllerImpl extends AbstractReconSqlDBTest {
     assertThat(completed).isTrue();
     
     // Wait for task status to be recorded after the exception
-    GenericTestUtils.waitFor((org.apache.hadoop.test.GenericTestUtils.CheckedSupplier<Boolean, RuntimeException>) () -> {
+    GenericTestUtils.waitFor(() -> {
       try {
         ReconTaskStatus status = reconTaskStatusDao.findById("MockTask");
         return status != null && status.getLastTaskRunStatus() == -1;
@@ -249,7 +249,7 @@ public class TestReconTaskControllerImpl extends AbstractReconSqlDBTest {
     reconTaskController.consumeOMEvents(omUpdateEventBatchMock,
         mock(OMMetadataManager.class));
     
-    GenericTestUtils.waitFor((org.apache.hadoop.test.GenericTestUtils.CheckedSupplier<Boolean, RuntimeException>) () -> {
+    GenericTestUtils.waitFor(() -> {
       try {
         ReconTaskStatus status = reconTaskStatusDao.findById(taskName);
         return status != null
@@ -851,7 +851,7 @@ public class TestReconTaskControllerImpl extends AbstractReconSqlDBTest {
     assertEquals(ReconTaskController.ReInitializationResult.SUCCESS, result);
 
     // Wait for event to process and seq alignment
-    GenericTestUtils.waitFor((org.apache.hadoop.test.GenericTestUtils.CheckedSupplier<Boolean, RuntimeException>) () -> {
+    GenericTestUtils.waitFor(() -> {
       ReconTaskStatus deltaStatusAfter = reconTaskStatusDao.findById("OmDeltaRequest");
       return deltaStatusAfter != null && deltaStatusAfter.getLastUpdatedSeqNumber() == 12345L;
     }, 100, 5000);
