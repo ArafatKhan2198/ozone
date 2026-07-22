@@ -580,7 +580,7 @@ public class OzoneManagerServiceProviderImpl
 
     reconTaskController.resetRetryCounters();
     ReconTaskController.ReInitializationResult result = reconTaskController.queueReInitializationEvent(
-        ReconTaskReInitializationEvent.ReInitializationReason.MANUAL_TRIGGER);
+        ReconTaskReInitializationEvent.ReInitializationReason.MANUAL_OM_DB_REBUILD);
 
     if (result == ReconTaskController.ReInitializationResult.SUCCESS) {
       return new OMDBReprocessResponse(OMDBReprocessResponse.Status.ACCEPTED,

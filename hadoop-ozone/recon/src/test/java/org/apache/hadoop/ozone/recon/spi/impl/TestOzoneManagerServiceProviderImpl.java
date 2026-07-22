@@ -701,7 +701,7 @@ public class TestOzoneManagerServiceProviderImpl {
         reconUtils, ozoneManagerProtocol, reconContext, taskStatusUpdaterManager);
 
     when(reconTaskController.queueReInitializationEvent(
-        ReconTaskReInitializationEvent.ReInitializationReason.MANUAL_TRIGGER))
+        ReconTaskReInitializationEvent.ReInitializationReason.MANUAL_OM_DB_REBUILD))
         .thenReturn(ReconTaskController.ReInitializationResult.SUCCESS);
 
     response = serviceProvider.triggerTaskRebuild();
@@ -710,7 +710,7 @@ public class TestOzoneManagerServiceProviderImpl {
 
     // Test 3: Enabled, buffer full / retry
     when(reconTaskController.queueReInitializationEvent(
-        ReconTaskReInitializationEvent.ReInitializationReason.MANUAL_TRIGGER))
+        ReconTaskReInitializationEvent.ReInitializationReason.MANUAL_OM_DB_REBUILD))
         .thenReturn(ReconTaskController.ReInitializationResult.RETRY_LATER);
 
     response = serviceProvider.triggerTaskRebuild();

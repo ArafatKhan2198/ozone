@@ -800,7 +800,7 @@ public class ReconTaskControllerImpl implements ReconTaskController {
         } else {
           resetRetryCounters();
           LOG.info("Completed async task reinitialization");
-          if (event.getReason() == ReconTaskReInitializationEvent.ReInitializationReason.MANUAL_TRIGGER) {
+          if (event.getReason() == ReconTaskReInitializationEvent.ReInitializationReason.MANUAL_OM_DB_REBUILD) {
             updateOMSyncTrackingSeqs(checkpointedOMMetadataManager.getLastSequenceNumberFromDB());
           }
         }
@@ -890,8 +890,8 @@ public class ReconTaskControllerImpl implements ReconTaskController {
    */
   private void cleanupPreExistingCheckpoints() {
     try {
-      if (currentOMMetadataManager == null) {
-        LOG.debug("No current OM metadata manager, skipping pre-existing checkpoint cleanup");
+      if (currentOMMetadataManager == null || currentOMMetadataManager.getStore() == null) {
+        LOG.debug("No current OM metadata manager or store, skipping pre-existing checkpoint cleanup");
         return;
       }
       
