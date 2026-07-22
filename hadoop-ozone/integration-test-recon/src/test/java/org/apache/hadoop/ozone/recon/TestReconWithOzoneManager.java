@@ -103,7 +103,6 @@ public class TestReconWithOzoneManager {
         TimeUnit.MILLISECONDS
     );
     conf.setLong(RECON_OM_DELTA_UPDATE_LIMIT, 10);
-    conf.setBoolean(ReconServerConfigKeys.OZONE_RECON_TASK_REBUILD_ENABLED, true);
 
     RequestConfig config = RequestConfig.custom()
         .setConnectTimeout(socketTimeout)

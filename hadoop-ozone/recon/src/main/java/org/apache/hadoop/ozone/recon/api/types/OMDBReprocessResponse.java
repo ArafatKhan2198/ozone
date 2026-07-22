@@ -26,7 +26,6 @@ public class OMDBReprocessResponse {
 
   public enum Status {
     ACCEPTED,
-    FORBIDDEN,
     RETRY
   }
 

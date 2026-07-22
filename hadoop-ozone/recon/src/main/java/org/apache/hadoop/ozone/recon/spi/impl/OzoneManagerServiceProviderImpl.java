@@ -33,8 +33,6 @@ import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.OZONE_RECON_OM
 import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.OZONE_RECON_OM_SNAPSHOT_TASK_INITIAL_DELAY_DEFAULT;
 import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.OZONE_RECON_OM_SNAPSHOT_TASK_INTERVAL_DEFAULT;
 import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.OZONE_RECON_OM_SNAPSHOT_TASK_INTERVAL_DELAY;
-import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.OZONE_RECON_TASK_REBUILD_ENABLED;
-import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.OZONE_RECON_TASK_REBUILD_ENABLED_DEFAULT;
 import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.RECON_OM_DELTA_UPDATE_LAG_THRESHOLD;
 import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.RECON_OM_DELTA_UPDATE_LAG_THRESHOLD_DEFAULT;
 import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.RECON_OM_DELTA_UPDATE_LIMIT;
@@ -139,7 +137,6 @@ public class OzoneManagerServiceProviderImpl
   private ReconContext reconContext;
   private ReconTaskStatusUpdaterManager taskStatusUpdaterManager;
   private ReconRDBSnapshotProvider reconSnapshotProvider;
-  private final boolean isTaskRebuildEnabled;
 
   /**
    * OM Snapshot related task names.
@@ -215,9 +212,6 @@ public class OzoneManagerServiceProviderImpl
     this.reconSyncMetrics = ReconSyncMetrics.create();
     this.deltaUpdateLimit = deltaUpdateLimits;
     this.isSyncDataFromOMRunning = new AtomicBoolean();
-    this.isTaskRebuildEnabled = configuration.getBoolean(
-        OZONE_RECON_TASK_REBUILD_ENABLED,
-        OZONE_RECON_TASK_REBUILD_ENABLED_DEFAULT);
     this.threadNamePrefix =
         reconUtils.getReconNodeDetails(configuration).threadNamePrefix();
     this.threadFactory =
@@ -573,11 +567,6 @@ public class OzoneManagerServiceProviderImpl
 
   @Override
   public OMDBReprocessResponse triggerTaskRebuild() {
-    if (!isTaskRebuildEnabled) {
-      return new OMDBReprocessResponse(OMDBReprocessResponse.Status.FORBIDDEN,
-          "Manual OM DB rebuild is disabled. Set " + OZONE_RECON_TASK_REBUILD_ENABLED + " to true.");
-    }
-
     if (omMetadataManager == null || omMetadataManager.getStore() == null) {
       return new OMDBReprocessResponse(OMDBReprocessResponse.Status.RETRY,
           "Recon has not loaded an OM DB yet, so there is nothing to rebuild. Ensure an OM DB snapshot is "

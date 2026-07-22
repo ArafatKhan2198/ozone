@@ -61,8 +61,6 @@ public class TriggerDBSyncEndpoint {
     OMDBReprocessResponse response = ozoneManagerServiceProvider.triggerTaskRebuild();
     if (response.getStatus() == OMDBReprocessResponse.Status.ACCEPTED) {
       return Response.accepted(response).build();
-    } else if (response.getStatus() == OMDBReprocessResponse.Status.FORBIDDEN) {
-      return Response.status(Response.Status.FORBIDDEN).entity(response).build();
     } else {
       return Response.status(Response.Status.CONFLICT).entity(response).build();
     }

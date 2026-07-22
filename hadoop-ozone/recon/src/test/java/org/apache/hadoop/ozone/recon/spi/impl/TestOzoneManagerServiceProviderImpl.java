@@ -27,7 +27,6 @@ import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.OZONE_RECON_DB
 import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.OZONE_RECON_OM_SNAPSHOT_DB_DIR;
 import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.RECON_OM_DELTA_UPDATE_LAG_THRESHOLD;
 import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.RECON_OM_DELTA_UPDATE_LIMIT;
-import static org.apache.hadoop.ozone.recon.ReconServerConfigKeys.OZONE_RECON_TASK_REBUILD_ENABLED;
 import org.apache.hadoop.ozone.recon.api.types.OMDBReprocessResponse;
 import static org.apache.hadoop.ozone.recon.spi.impl.OzoneManagerServiceProviderImpl.OmSnapshotTaskName.OmDeltaRequest;
 import static org.apache.hadoop.ozone.recon.spi.impl.OzoneManagerServiceProviderImpl.OmSnapshotTaskName.OmSnapshotRequest;
@@ -686,20 +685,10 @@ public class TestOzoneManagerServiceProviderImpl {
     ReconTaskStatusUpdaterManager taskStatusUpdaterManager = mock(ReconTaskStatusUpdaterManager.class);
     ReconUtils reconUtils = new ReconUtils();
 
-    // Test 1: Disabled by default
-    configuration.setBoolean(OZONE_RECON_TASK_REBUILD_ENABLED, false);
-    OzoneManagerServiceProviderImpl serviceProvider = new OzoneManagerServiceProviderImpl(
-        configuration, mock(ReconOMMetadataManager.class), reconTaskController,
-        reconUtils, ozoneManagerProtocol, reconContext, taskStatusUpdaterManager);
-
-    OMDBReprocessResponse response = serviceProvider.triggerTaskRebuild();
-    assertEquals(OMDBReprocessResponse.Status.FORBIDDEN, response.getStatus());
-
-    // Test 2: Enabled, successful queue (OM DB is loaded)
-    configuration.setBoolean(OZONE_RECON_TASK_REBUILD_ENABLED, true);
+    // Test 1: Successful queue (OM DB is loaded)
     ReconOMMetadataManager loadedOmMgr = mock(ReconOMMetadataManager.class);
     when(loadedOmMgr.getStore()).thenReturn(mock(RDBStore.class));
-    serviceProvider = new OzoneManagerServiceProviderImpl(
+    OzoneManagerServiceProviderImpl serviceProvider = new OzoneManagerServiceProviderImpl(
         configuration, loadedOmMgr, reconTaskController,
         reconUtils, ozoneManagerProtocol, reconContext, taskStatusUpdaterManager);
 
@@ -707,11 +696,11 @@ public class TestOzoneManagerServiceProviderImpl {
         ReconTaskReInitializationEvent.ReInitializationReason.MANUAL_OM_DB_REBUILD))
         .thenReturn(ReconTaskController.ReInitializationResult.SUCCESS);
 
-    response = serviceProvider.triggerTaskRebuild();
+    OMDBReprocessResponse response = serviceProvider.triggerTaskRebuild();
     assertEquals(OMDBReprocessResponse.Status.ACCEPTED, response.getStatus());
     verify(reconTaskController, times(1)).resetRetryCounters();
 
-    // Test 3: Enabled, buffer full / retry
+    // Test 2: Buffer full / retry
     when(reconTaskController.queueReInitializationEvent(
         ReconTaskReInitializationEvent.ReInitializationReason.MANUAL_OM_DB_REBUILD))
         .thenReturn(ReconTaskController.ReInitializationResult.RETRY_LATER);
@@ -719,7 +708,7 @@ public class TestOzoneManagerServiceProviderImpl {
     response = serviceProvider.triggerTaskRebuild();
     assertEquals(OMDBReprocessResponse.Status.RETRY, response.getStatus());
 
-    // Test 4: Enabled, but no OM DB loaded (store is null) -> RETRY, nothing queued
+    // Test 3: No OM DB loaded (store is null) -> RETRY, nothing queued
     ReconTaskController noDbController = mock(ReconTaskController.class);
     serviceProvider = new OzoneManagerServiceProviderImpl(
         configuration, mock(ReconOMMetadataManager.class), noDbController,
