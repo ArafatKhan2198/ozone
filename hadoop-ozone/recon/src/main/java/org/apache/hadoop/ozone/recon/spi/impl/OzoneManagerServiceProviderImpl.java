@@ -578,6 +578,12 @@ public class OzoneManagerServiceProviderImpl
           "Manual OM DB rebuild is disabled. Set " + OZONE_RECON_TASK_REBUILD_ENABLED + " to true.");
     }
 
+    if (omMetadataManager == null || omMetadataManager.getStore() == null) {
+      return new OMDBReprocessResponse(OMDBReprocessResponse.Status.RETRY,
+          "Recon has not loaded an OM DB yet, so there is nothing to rebuild. Ensure an OM DB snapshot is "
+              + "present in the Recon OM DB directory and has been loaded, then retry.");
+    }
+
     reconTaskController.resetRetryCounters();
     ReconTaskController.ReInitializationResult result = reconTaskController.queueReInitializationEvent(
         ReconTaskReInitializationEvent.ReInitializationReason.MANUAL_OM_DB_REBUILD);

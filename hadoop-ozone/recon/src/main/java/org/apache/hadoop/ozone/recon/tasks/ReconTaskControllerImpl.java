@@ -747,9 +747,14 @@ public class ReconTaskControllerImpl implements ReconTaskController {
     // Create temporary directory for checkpoint
     String parentPath = cleanTempCheckPointPath(omMetaManager);
     
-    // Create checkpoint
+    // Create checkpoint. getCheckpoint returns null when RocksDB fails to snapshot
+    // (e.g. a manually placed OM DB that is incomplete or corrupt).
     DBCheckpoint checkpoint = omMetaManager.getStore().getCheckpoint(parentPath, true);
-    
+    if (checkpoint == null) {
+      throw new IOException("Failed to create OM DB checkpoint at " + parentPath
+          + "; the on-disk OM DB may be incomplete or corrupt.");
+    }
+
     return omMetaManager.createCheckpointReconMetadataManager(configuration, checkpoint);
   }
 

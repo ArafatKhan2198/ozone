@@ -41,6 +41,7 @@ import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -694,10 +695,12 @@ public class TestOzoneManagerServiceProviderImpl {
     OMDBReprocessResponse response = serviceProvider.triggerTaskRebuild();
     assertEquals(OMDBReprocessResponse.Status.FORBIDDEN, response.getStatus());
 
-    // Test 2: Enabled, successful queue
+    // Test 2: Enabled, successful queue (OM DB is loaded)
     configuration.setBoolean(OZONE_RECON_TASK_REBUILD_ENABLED, true);
+    ReconOMMetadataManager loadedOmMgr = mock(ReconOMMetadataManager.class);
+    when(loadedOmMgr.getStore()).thenReturn(mock(RDBStore.class));
     serviceProvider = new OzoneManagerServiceProviderImpl(
-        configuration, mock(ReconOMMetadataManager.class), reconTaskController,
+        configuration, loadedOmMgr, reconTaskController,
         reconUtils, ozoneManagerProtocol, reconContext, taskStatusUpdaterManager);
 
     when(reconTaskController.queueReInitializationEvent(
@@ -715,6 +718,15 @@ public class TestOzoneManagerServiceProviderImpl {
 
     response = serviceProvider.triggerTaskRebuild();
     assertEquals(OMDBReprocessResponse.Status.RETRY, response.getStatus());
+
+    // Test 4: Enabled, but no OM DB loaded (store is null) -> RETRY, nothing queued
+    ReconTaskController noDbController = mock(ReconTaskController.class);
+    serviceProvider = new OzoneManagerServiceProviderImpl(
+        configuration, mock(ReconOMMetadataManager.class), noDbController,
+        reconUtils, ozoneManagerProtocol, reconContext, taskStatusUpdaterManager);
+    response = serviceProvider.triggerTaskRebuild();
+    assertEquals(OMDBReprocessResponse.Status.RETRY, response.getStatus());
+    verify(noDbController, never()).queueReInitializationEvent(any());
   }
 
   private BucketLayout getBucketLayout() {
