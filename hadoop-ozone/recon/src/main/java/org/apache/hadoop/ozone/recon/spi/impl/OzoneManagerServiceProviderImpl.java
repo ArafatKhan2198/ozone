@@ -573,7 +573,6 @@ public class OzoneManagerServiceProviderImpl
               + "present in the Recon OM DB directory and has been loaded, then retry.");
     }
 
-    reconTaskController.resetRetryCounters();
     ReconTaskController.ReInitializationResult result = reconTaskController.queueReInitializationEvent(
         ReconTaskReInitializationEvent.ReInitializationReason.MANUAL_OM_DB_REBUILD);
 

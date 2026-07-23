@@ -59,7 +59,6 @@ import org.apache.hadoop.ozone.recon.spi.ReconContainerMetadataManager;
 import org.apache.hadoop.ozone.recon.spi.ReconFileMetadataManager;
 import org.apache.hadoop.ozone.recon.spi.ReconGlobalStatsManager;
 import org.apache.hadoop.ozone.recon.spi.ReconNamespaceSummaryManager;
-import org.apache.hadoop.ozone.recon.spi.impl.OzoneManagerServiceProviderImpl;
 import org.apache.hadoop.ozone.recon.spi.impl.ReconDBProvider;
 import org.apache.hadoop.ozone.recon.tasks.types.NamedCallableTask;
 import org.apache.hadoop.ozone.recon.tasks.types.TaskExecutionException;
@@ -618,6 +617,10 @@ public class ReconTaskControllerImpl implements ReconTaskController {
     // Track reprocess submission
     controllerMetrics.incrTotalReprocessSubmittedToQueue();
 
+    if (reason == ReconTaskReInitializationEvent.ReInitializationReason.MANUAL_OM_DB_REBUILD) {
+      lastRetryTimestamp.set(0);
+    }
+
     ReInitializationResult reInitializationResult = validateRetryCountAndDelay();
     if (null != reInitializationResult) {
       return reInitializationResult;
@@ -805,9 +808,6 @@ public class ReconTaskControllerImpl implements ReconTaskController {
         } else {
           resetRetryCounters();
           LOG.info("Completed async task reinitialization");
-          if (event.getReason() == ReconTaskReInitializationEvent.ReInitializationReason.MANUAL_OM_DB_REBUILD) {
-            updateOMSyncTrackingSeqs(checkpointedOMMetadataManager.getLastSequenceNumberFromDB());
-          }
         }
       } else {
         LOG.error("Checkpointed OM metadata manager is null, cannot perform reinitialization");
@@ -827,23 +827,6 @@ public class ReconTaskControllerImpl implements ReconTaskController {
     // Reset appropriate flags based on the reason
     resetEventBufferOverflowFlag();
     resetTasksFailureFlag();
-  }
-
-  private void updateOMSyncTrackingSeqs(long rebuiltFromSeq) {
-    ReconTaskStatusUpdater deltaUpdater = taskStatusUpdaterManager.getTaskStatusUpdater(
-        OzoneManagerServiceProviderImpl.OmSnapshotTaskName.OmDeltaRequest.name());
-    ReconTaskStatusUpdater snapshotUpdater = taskStatusUpdaterManager.getTaskStatusUpdater(
-        OzoneManagerServiceProviderImpl.OmSnapshotTaskName.OmSnapshotRequest.name());
-
-    if (deltaUpdater != null) {
-      deltaUpdater.setLastUpdatedSeqNumber(rebuiltFromSeq);
-      deltaUpdater.updateDetails();
-    }
-    if (snapshotUpdater != null) {
-      snapshotUpdater.setLastUpdatedSeqNumber(rebuiltFromSeq);
-      snapshotUpdater.updateDetails();
-    }
-    LOG.info("Aligned OM sync tracking sequences to rebuilt DB seq: {}", rebuiltFromSeq);
   }
 
   @Override

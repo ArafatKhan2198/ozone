@@ -698,7 +698,6 @@ public class TestOzoneManagerServiceProviderImpl {
 
     OMDBReprocessResponse response = serviceProvider.triggerTaskRebuild();
     assertEquals(OMDBReprocessResponse.Status.ACCEPTED, response.getStatus());
-    verify(reconTaskController, times(1)).resetRetryCounters();
 
     // Test 2: Buffer full / retry
     when(reconTaskController.queueReInitializationEvent(
