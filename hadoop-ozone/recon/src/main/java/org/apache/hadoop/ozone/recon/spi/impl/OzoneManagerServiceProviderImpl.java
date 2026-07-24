@@ -86,8 +86,6 @@ import org.apache.hadoop.ozone.recon.ReconContext;
 import org.apache.hadoop.ozone.recon.ReconServerConfigKeys;
 import org.apache.hadoop.ozone.recon.ReconUtils;
 import org.apache.hadoop.ozone.recon.api.types.OMDBReprocessResponse;
-import org.apache.hadoop.ozone.recon.tasks.ReconTaskController;
-import org.apache.hadoop.ozone.recon.tasks.ReconTaskReInitializationEvent;
 import org.apache.hadoop.ozone.recon.metrics.OzoneManagerSyncMetrics;
 import org.apache.hadoop.ozone.recon.metrics.ReconSyncMetrics;
 import org.apache.hadoop.ozone.recon.recovery.ReconOMMetadataManager;
@@ -581,7 +579,8 @@ public class OzoneManagerServiceProviderImpl
           "Manual OM DB rebuild queued successfully.");
     } else {
       return new OMDBReprocessResponse(OMDBReprocessResponse.Status.RETRY,
-          "Manual OM DB rebuild could not be queued. Buffer might be full or another rebuild is pending. Please retry.");
+          "Manual OM DB rebuild could not be queued. Buffer might be full or another rebuild is "
+              + "pending. Please retry.");
     }
   }
 

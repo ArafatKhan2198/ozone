@@ -24,6 +24,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  */
 public class OMDBReprocessResponse {
 
+  /** Result of a manual OM DB reprocess request. */
   public enum Status {
     ACCEPTED,
     RETRY
