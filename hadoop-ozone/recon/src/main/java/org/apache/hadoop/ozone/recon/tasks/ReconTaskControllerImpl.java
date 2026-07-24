@@ -849,7 +849,6 @@ public class ReconTaskControllerImpl implements ReconTaskController {
    * Reset retry counters - for testing purposes.
    */
   @VisibleForTesting
-  @Override
   public void resetRetryCounters() {
     eventProcessRetryCount.set(0);
     lastRetryTimestamp.set(0);

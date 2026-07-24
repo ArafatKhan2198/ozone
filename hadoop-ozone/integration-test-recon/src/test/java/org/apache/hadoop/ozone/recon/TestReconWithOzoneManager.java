@@ -430,13 +430,13 @@ public class TestReconWithOzoneManager {
     HttpResponse response = httpClient.execute(httpPost);
     assertEquals(202, response.getStatusLine().getStatusCode());
 
-    // 7. Wait for tasks to succeed
+    // 7. Wait for reprocess to succeed (REPROCESS_STAGING seq is set by reInitializeTasks)
     GenericTestUtils.waitFor(() -> {
       try {
         String taskStatusResponse = makeHttpCall(taskStatusURL);
         long reconLatestSeqNumber = getReconTaskAttributeFromJson(
             taskStatusResponse,
-            OmSnapshotRequest.name(),
+            "REPROCESS_STAGING",
             "lastUpdatedSeqNumber");
         return reconLatestSeqNumber == omLatestSeqNumber;
       } catch (Exception e) {
