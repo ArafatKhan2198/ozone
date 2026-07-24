@@ -395,10 +395,6 @@ public class TestReconWithOzoneManager {
    */
   @Test
   public void testManualOMDBRebuild() throws Exception {
-    OzoneManagerServiceProviderImpl impl = (OzoneManagerServiceProviderImpl)
-        recon.getReconServer().getOzoneManagerServiceProvider();
-    OzoneConfiguration reconConf = recon.getReconServer().getOzoneConf();
-
     // 1. Stop Recon
     recon.stop();
 

@@ -24,17 +24,17 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  */
 public class OMDBReprocessResponse {
 
-  /** Result of a manual OM DB reprocess request. */
-  public enum Status {
-    ACCEPTED,
-    RETRY
-  }
-
   @JsonProperty("status")
   private Status status;
 
   @JsonProperty("message")
   private String message;
+
+  /** Result of a manual OM DB reprocess request. */
+  public enum Status {
+    ACCEPTED,
+    RETRY
+  }
 
   public OMDBReprocessResponse(Status status, String message) {
     this.status = status;
